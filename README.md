@@ -71,6 +71,8 @@ Lua functions:
 
 ## Input
 
+You can use up to 8 controllers for PiXL. The buttons available for checking are *A*,*B*,*X*,*Y*,*LEFT*,*RIGHT*,*UP*,*DOWN* and *START*.
+
 * **btn(button[, player])** Returns true if the given *button* for *player* is pressed.
 * **btnp(button[, player])** Returns true if the given *button* for *player* was pressed since the last frame. This can be used to check inputs for menus.
 * **mouse()** Returns the mouse position.
