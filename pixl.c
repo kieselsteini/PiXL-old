@@ -563,8 +563,8 @@ static int f_btnp(lua_State *L) {
 
 static int f_mouse(lua_State *L) {
   Input *input = &inputs[_check_controller(L)];
-  lua_pushinteger(L, input->mouse.x);
-  lua_pushinteger(L, input->mouse.y);
+  lua_pushinteger(L, input->mouse.x + translation.x);
+  lua_pushinteger(L, input->mouse.y + translation.y);
   return 2;
 }
 
