@@ -37,6 +37,7 @@ The following functions must be defined as global functions and will be called b
 * **rect(color, x0, y0, x1, y1)** Draws a single pixel width rectangle on the screen.
 * **line(color, x0, y0, x1, y1)** Draws a line from *x0*, *y0* to *x1*, *y1*.
 * **circle(color, x, y, radius[, fill)** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
+* **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values.
 
 ## Highlevel Drawing
 

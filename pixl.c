@@ -339,13 +339,12 @@ static const char *px_check_arg(const char *name) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#define inscreen(x, y) ((x) >= 0 && (x) < PX_SCREEN_WIDTH && (y) >= 0 && (y) < PX_SCREEN_HEIGHT)
 #define swap(T, a, b) do { T _tmp_ = a; a = b; b = _tmp_; } while(0)
 
 static void _pixel(Uint8 color, int x0, int y0) {
   int x = x0 + translation.x;
   int y = y0 + translation.y;
-  if (inscreen(x, y)) screen[x][y] = color;
+  if (x >= 0 && x < PX_SCREEN_WIDTH && y >= 0 && y < PX_SCREEN_HEIGHT) screen[x][y] = color;
 }
 
 static int f_clear(lua_State *L) {
@@ -436,6 +435,18 @@ static int f_circle(lua_State *L) {
     }
   }
   return 0;
+}
+
+static int f_translate(lua_State *L) {
+  if (lua_gettop(L) == 2) {
+    int x = (int)luaL_checknumber(L, 1);
+    int y = (int)luaL_checknumber(L, 2);
+    translation.x = x;
+    translation.y = y;
+  }
+  lua_pushinteger(L, translation.x);
+  lua_pushinteger(L, translation.y);
+  return 2;
 }
 
 
@@ -630,6 +641,7 @@ static const luaL_Reg px_functions[] = {
   {"rect", f_rect},
   {"line", f_line},
   {"circle", f_circle},
+  {"translate", f_translate},
   // highlevel video
   {"sprite", f_sprite},
   {"print", f_print},
@@ -1007,7 +1019,7 @@ static int px_lua_init(lua_State *L) {
   for (i = 0; i < PX_AUDIO_CHANNELS; ++i) SDL_zerop(&channels[i]);
   running = SDL_TRUE;
   fullscreen = SDL_FALSE;
-  SDL_zero(inputs);
+  SDL_zero(inputs); SDL_zero(translation);
   px_open_controllers(L);
 
   // load the Lua script
