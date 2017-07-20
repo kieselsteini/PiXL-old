@@ -63,6 +63,8 @@ MML syntax:
 * **WS** Selects sawtooth waveform.
 * **WN** Selects noise waveform.
 
+Lua functions:
+
 * **play(channel, string[, looping])** Plays the given MML *string* on the given *channel*. If *looping* is set the MML-string will be looped.
 * **stop(channel)** Stops the audio generation on the given *channel*.
 * **pause(paused)** Stops the entire audio mixing if *paused* is *true*. This is could be useful if you want to setup a song to be played on multiple channels.
