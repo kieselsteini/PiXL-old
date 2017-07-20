@@ -799,6 +799,7 @@ static void px_audio_mixer_callback(void *userdata, Uint8 *stream, int len) {
   float v;
   int i, j, waveform;
 
+  (void)userdata;
   for (i = 0, out = (Sint8*)stream; i < len; ++i) {
     value = 0;
     for (j = 0; j < PX_AUDIO_CHANNELS; ++j) {
@@ -919,7 +920,7 @@ static void px_render_screen(lua_State *L) {
   int x, y, pitch;
   
   // update texture
-  if (SDL_LockTexture(texture, NULL, &pixels, &pitch)) luaL_error(L, "SDL_LockTexture() failed: %s", SDL_GetError());
+  if (SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch)) luaL_error(L, "SDL_LockTexture() failed: %s", SDL_GetError());
   for (y = 0; y < PX_SCREEN_HEIGHT; ++y) {
     p = pixels + pitch * y;
     for (x = 0; x < PX_SCREEN_WIDTH; ++x) {
