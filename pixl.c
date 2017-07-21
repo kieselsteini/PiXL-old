@@ -508,27 +508,31 @@ static int f_play(lua_State *L) {
   int i = (int)luaL_checkinteger(L, 1);
   const char *str = luaL_checkstring(L, 2);
   luaL_argcheck(L, i >= 0 && i < PX_AUDIO_CHANNELS, 1, "invalid channel");
-  SDL_LockAudioDevice(audio_device);
-  channel = &channels[i];
-  mml_reset_channel(channel);
-  channel->source = channel->in = SDL_strdup(str);
-  channel->looping = lua_toboolean(L, 3);
-  SDL_UnlockAudioDevice(audio_device);
+  if (audio_device) {
+    SDL_LockAudioDevice(audio_device);
+    channel = &channels[i];
+    mml_reset_channel(channel);
+    channel->source = channel->in = SDL_strdup(str);
+    channel->looping = lua_toboolean(L, 3);
+    SDL_UnlockAudioDevice(audio_device);
+  }
   return 0;
 }
 
 static int f_stop(lua_State *L) {
   int i = (int)luaL_checkinteger(L, 1);
   luaL_argcheck(L, i >= 0 && i < PX_AUDIO_CHANNELS, 1, "invalid channel");
-  SDL_LockAudioDevice(audio_device);
-  mml_reset_channel(&channels[i]);
-  SDL_UnlockAudioDevice(audio_device);
+  if (audio_device) {
+    SDL_LockAudioDevice(audio_device);
+    mml_reset_channel(&channels[i]);
+    SDL_UnlockAudioDevice(audio_device);
+  }
   return 0;
 }
 
 static int f_pause(lua_State *L) {
   int pause = lua_toboolean(L, 1);
-  SDL_PauseAudioDevice(audio_device, pause);
+  if (audio_device) SDL_PauseAudioDevice(audio_device, pause);
   return 0;
 }
 
@@ -1000,16 +1004,19 @@ static int px_lua_init(lua_State *L) {
   SDL_ShowCursor(0);
 
   // audio init
-  SDL_zero(want); SDL_zero(have);
-  want.callback = px_audio_mixer_callback;
-  want.channels = 1;
-  want.format = AUDIO_S8;
-  want.freq = PX_AUDIO_FREQUENCY;
-  want.samples = 1024 * 4;
-  audio_device = SDL_OpenAudioDevice(NULL, SDL_FALSE, &want, &have, 0);
-  if (!audio_device) luaL_error(L, "SDL_OpenAudioDevice() failed: %s", SDL_GetError());
-  mixing_frequency = (float)have.freq;
-  SDL_PauseAudioDevice(audio_device, SDL_FALSE);
+  if (!px_check_parm("-nosound")) {
+    SDL_zero(want); SDL_zero(have);
+    want.callback = px_audio_mixer_callback;
+    want.channels = 1;
+    want.format = AUDIO_S8;
+    want.freq = PX_AUDIO_FREQUENCY;
+    want.samples = 1024 * 4;
+    str = px_check_arg("-audio");
+    audio_device = SDL_OpenAudioDevice(str, SDL_FALSE, &want, &have, 0);
+    if (!audio_device) luaL_error(L, "SDL_OpenAudioDevice() failed: %s", SDL_GetError());
+    mixing_frequency = (float)have.freq;
+    SDL_PauseAudioDevice(audio_device, SDL_FALSE);
+  }
 
   // init some stuff
   px_randomseed(4096); for (i = 0; i < PX_AUDIO_NOISE; ++i) audio_noise[i] = px_rand() % 8 - 4;
