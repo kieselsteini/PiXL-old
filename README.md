@@ -4,6 +4,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 * all resources are handeled as strings
 * games can be written with simple Lua commands
+* true retro feeling with small resolution and chiptune sounds / music
 
 ## Limitations
 
@@ -20,7 +21,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 ## Documentation
 
-On start PiXL will load and execute the file "game.lua".
+On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details.
 
 ## Callbacks
 
@@ -31,13 +32,13 @@ The following functions must be defined as global functions and will be called b
 
 ### Video Drawing Primitives
 
-* **clear([color])** Clear the entire screen with the color. If not color is given black (0) is used.
-* **point(color, x, y)** Draw a single point on the screen.
+* **clear([color])** Clear the entire screen with the color. If no color is given black (0) is used.
+* **point(color, x, y)** Draw a single pixel on the screen.
 * **fill(color, x0, y0, x1, y1)** Fills a portion of the screen with the given color.
 * **rect(color, x0, y0, x1, y1)** Draws a single pixel width rectangle on the screen.
-* **line(color, x0, y0, x1, y1)** Draws a line from *x0*, *y0* to *x1*, *y1*.
+* **line(color, x0, y0, x1, y1)** Draws a single pixel line from *x0*, *y0* to *x1*, *y1*.
 * **circle(color, x, y, radius[, fill)** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
-* **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values.
+* **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values. Please note, that the mouse X, Y values will be translated as well.
 
 ## Highlevel Drawing
 
@@ -63,6 +64,10 @@ MML syntax:
 * **WT** Selects triangle waveform.
 * **WS** Selects sawtooth waveform.
 * **WN** Selects noise waveform.
+
+Example:
+    * **"W2 T120 L4 CDEFGAB>C" plays a full octave from C-C. All notes are set to quarter notes and the waveform will be 25% square waves.
+
 
 Lua functions:
 
