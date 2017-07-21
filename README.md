@@ -5,6 +5,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * all resources are handeled as strings
 * games can be written with simple Lua commands
 * true retro feeling with small resolution and chiptune sounds / music
+* uses stock Lua 5.3 with all new features like integers and bit operations
 
 ## Limitations
 
