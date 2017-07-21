@@ -712,8 +712,8 @@ static void mml_parse_duration(AudioChannel *channel) {
   duration = mixing_frequency / ((float)channel->tempo * 0.25f / 60.0f) * (1.0f / duration);
   if (mml_is_next(channel, '.')) duration *= 1.5f;
   channel->duration = (int)duration;
-  channel->silence = (int)(duration * (1.0f / 8.0f));
   if (mml_is_next(channel, '&')) channel->silence = 0;
+  else channel->silence = (int)(duration * (1.0f / 8.0f));
 }
 
 static void mml_parse_note(AudioChannel *channel, int key) {
@@ -727,17 +727,13 @@ static void mml_parse_note(AudioChannel *channel, int key) {
 }
 
 static void mml_parse_next(AudioChannel *channel) {
-  if (!channel->in) return;
   for (;;) {
+    if (!channel->in) return;
     mml_skip_spaces(channel);
     switch (*channel->in++) {
     case 0:
-      if (channel->looping) {
-        channel->in = channel->source;
-      }
-      else {
-        mml_reset_channel(channel); return;
-      }
+      if (channel->looping) channel->in = channel->source;
+      else mml_reset_channel(channel);
       break;
     case 'T': case 't':
       channel->tempo = mml_parse_number(channel);
