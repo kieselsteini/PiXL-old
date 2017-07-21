@@ -10,7 +10,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 ## Limitations
 
 * 256x240 resolution (NES screen size)
-* 16 colors with a fixes palette
+* 16 colors with a fixed palette
 * 8x8 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
 
@@ -106,3 +106,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 
 * **F12** Toggle fullscreen mode.
 * **ESC** Quits PiXL.
+
+## Bugs
+
+* the frame pacing is sometimes weird on certain machines
