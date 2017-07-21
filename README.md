@@ -99,6 +99,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **-video driver** Defines which video driver should be used by PiXL (and SDL2). Please check https://wiki.libsdl.org/SDL_HINT_RENDER_DRIVER?highlight=%28%5CbCategoryDefine%5Cb%29%7C%28CategoryHints%29 for possible values.
 * **-audio driver** Defines the audio driver which will be used by PiXL (and SDL2).
 * **-nosound** Disables sound completely.
+* **-window** Start in window mode instead of fullscreen.
 * **-file filename** Overrides the Lua file which will be loaded on startup.
 
 ## Hot Keys

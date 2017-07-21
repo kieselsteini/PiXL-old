@@ -992,9 +992,13 @@ static int px_lua_init(lua_State *L) {
   str = px_check_arg("-video");
   if (str) SDL_SetHint(SDL_HINT_RENDER_DRIVER, str);
 
+  // check for fullscreen
+  if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
+  else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
+
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
-  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_WINDOW_WIDTH, PX_WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE);
+  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_WINDOW_WIDTH, PX_WINDOW_HEIGHT, i);
   if (!window) luaL_error(L, "SDL_CreateWindow() failed: %s", SDL_GetError());
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!renderer) luaL_error(L, "SDL_CreateRenderer() failed: %s", SDL_GetError());
@@ -1022,7 +1026,6 @@ static int px_lua_init(lua_State *L) {
   px_randomseed(4096); for (i = 0; i < PX_AUDIO_NOISE; ++i) audio_noise[i] = px_rand() % 8 - 4;
   for (i = 0; i < PX_AUDIO_CHANNELS; ++i) SDL_zerop(&channels[i]);
   running = SDL_TRUE;
-  fullscreen = SDL_FALSE;
   SDL_zero(inputs); SDL_zero(translation);
   px_open_controllers(L);
 
