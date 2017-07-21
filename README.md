@@ -68,7 +68,7 @@ MML syntax:
 
 Example:
 
-* **"W2 T120 L4 CDEFGAB>C" plays a full octave from C-C. All notes are set to quarter notes and the waveform will be 25% square waves.
+* **W2 T120 L4 CDEFGAB>C** plays a full octave from C-C. All notes are set to quarter notes and the waveform will be 25% square waves.
 
 
 Lua functions:
