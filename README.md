@@ -69,6 +69,7 @@ MML syntax:
 Example:
 
 * **W2 T120 L4 CDEFGAB>C** plays a full octave from C-C. All notes are set to quarter notes and the waveform will be 25% square waves.
+* **t80l16>erc-cde32d32c<bara>cerdcc-r8cdrercr<arar4>drfargfer8cef32e32dcc-r8cd<a->e<a->cr<arl4aecdc-c<ag+b>ecdc-c8e8ag+2,l16brg+abb+32b32ag+e8eab+rbag+eg+ab8b+8a8e8e<<ab>cd>frab+rbagr8egrfeg+eg+abrb+rare** simple Tetris A theme
 
 
 Lua functions:
