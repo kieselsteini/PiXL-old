@@ -64,10 +64,11 @@ function update()
 
   -- draw menus
   local menuX = 0
+  local menuY = 144
   A = pixl.btnp('A')
   local function menu(str)
     local xl, xh = menuX, menuX + #str * 8 - 1
-    local yl, yh = 144, 144 + 8 - 1
+    local yl, yh = menuY, menuY + 8 - 1
     local hover = mx >= xl and mx <= xh and my >= yl and my <= yh
     menuX = menuX + #str * 8 + 8
     if hover and A then
@@ -102,6 +103,14 @@ function update()
       end
     end
   end
+
+  -- palette menus
+  menuX, menuY = 0, 144 + 8
+
+  if menu('PiXL') then pixl.palette('pixl') end
+  if menu('C64') then pixl.palette('c64') end
+  if menu('CGA') then pixl.palette('cga') end
+  if menu('16pal') then pixl.palette('16pal') end
 
   -- draw cursor
   pixl.sprite(mx, my, cursor_sprite, 8)

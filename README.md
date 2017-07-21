@@ -40,6 +40,7 @@ The following functions must be defined as global functions and will be called b
 * **line(color, x0, y0, x1, y1)** Draws a single pixel line from *x0*, *y0* to *x1*, *y1*.
 * **circle(color, x, y, radius[, fill)** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
 * **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values. Please note, that the mouse X, Y values will be translated as well.
+* **palette(name)** Select one of following palettes ("pixl", "c64", "cga", "16pal").
 
 ## Highlevel Drawing
 
