@@ -115,8 +115,7 @@ enum {
 };
 
 typedef struct Input {
-  Uint8 down[PX_BUTTON_LAST];
-  Uint8 pressed[PX_BUTTON_LAST];
+  Uint16 down, pressed;
   SDL_Point mouse;
 } Input;
 
@@ -544,24 +543,24 @@ static int f_pause(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static int _check_controller(lua_State *L) {
-  int i = (int)luaL_optinteger(L, 2, 0);
-  luaL_argcheck(L, i >= 0 && i < PX_NUM_CONTROLLERS, 2, "invalid controller");
-  return i;
-}
-
 static int _check_button(lua_State *L) {
   static const char *options[] = { "A", "B", "X", "Y", "LEFT", "RIGHT", "UP", "DOWN", "START", NULL };
-  return luaL_checkoption(L, 1, NULL, options);
+  return 1 << luaL_checkoption(L, 1, NULL, options);
+}
+
+static int _check_controller(lua_State *L) {
+  int controller = (int)luaL_optinteger(L, 2, 0);
+  luaL_argcheck(L, controller >= 0 && controller < PX_NUM_CONTROLLERS, 2, "invalid controller");
+  return controller;
 }
 
 static int f_btn(lua_State *L) {
-  lua_pushboolean(L, inputs[_check_controller(L)].down[_check_button(L)]);
+  lua_pushboolean(L, inputs[_check_controller(L)].down & _check_button(L));
   return 1;
 }
 
 static int f_btnp(lua_State *L) {
-  lua_pushboolean(L, inputs[_check_controller(L)].pressed[_check_button(L)]);
+  lua_pushboolean(L, inputs[_check_controller(L)].pressed & _check_button(L));
   return 1;
 }
 
@@ -871,11 +870,12 @@ static void px_handle_keys(const SDL_Event *ev) {
   case SDLK_SPACE: case SDLK_RETURN: button = PX_BUTTON_START; break;
   default: return;
   }
+  button = 1 << button;
   if (ev->type == SDL_KEYDOWN) {
-    inputs[0].down[button] = 1;
-    inputs[0].pressed[button] = 1;
+    inputs[0].down |= button;
+    inputs[0].pressed |= button;
   }
-  else inputs[0].down[button] = 0;
+  else inputs[0].down &= ~button;
 }
 
 static void px_handle_mouse(const SDL_Event *ev) {
@@ -885,11 +885,12 @@ static void px_handle_mouse(const SDL_Event *ev) {
   case SDL_BUTTON_RIGHT: button = PX_BUTTON_B; break;
   default: return;
   }
+  button = 1 << button;
   if (ev->type == SDL_MOUSEBUTTONDOWN) {
-    inputs[0].down[button] = 1;
-    inputs[0].pressed[button] = 1;
+    inputs[0].down |= button;
+    inputs[0].pressed |= button;
   }
-  else inputs[0].down[button] = 0;
+  else inputs[0].down &= ~button;
 }
 
 static void px_handle_controller(const SDL_Event *ev) {
@@ -907,11 +908,12 @@ static void px_handle_controller(const SDL_Event *ev) {
   case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: button = PX_BUTTON_RIGHT; break;
   default: return;
   }
+  button = 1 << button;
   if (ev->type == SDL_CONTROLLERBUTTONDOWN) {
-    inputs[ev->cbutton.which].down[button] = 1;
-    inputs[ev->cbutton.which].pressed[button] = 1;
+    inputs[ev->cbutton.which].down |= button;
+    inputs[ev->cbutton.which].pressed |= button;
   }
-  else inputs[ev->cbutton.which].down[button] = 0;
+  else inputs[ev->cbutton.which].down &= ~button;
 }
 
 static void px_render_screen(lua_State *L) {
@@ -968,7 +970,7 @@ static void px_run_main_loop(lua_State *L) {
       if (lua_getglobal(L, "update") == LUA_TFUNCTION) lua_call(L, 0, 0);
       else lua_pop(L, 1);
       // reset input
-      for (i = 0; i < PX_NUM_CONTROLLERS; ++i) SDL_zero(inputs[0].pressed);
+      for (i = 0; i < PX_NUM_CONTROLLERS; ++i) inputs[i].pressed = 0;
     }
     // render stuff
     px_render_screen(L);
