@@ -1030,6 +1030,7 @@ static int px_lua_init(lua_State *L) {
   running = SDL_TRUE;
   SDL_zero(inputs); SDL_zero(translation);
   px_open_controllers(L);
+  px_randomseed(47 * 1024); // reset prng
 
   // load the Lua script
   str = px_check_arg("-file");
