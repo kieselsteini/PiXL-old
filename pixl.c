@@ -30,6 +30,19 @@
 #include "lua53.h"
 #include "lz4.h"
 
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+#else
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#define INVALID_SOCKET -1
+#define closesocket(s) close(s)
+#endif // _WIN32
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,6 +72,9 @@
 
 // Number of controllers
 #define PX_NUM_CONTROLLERS  8
+
+// Default network port
+#define PX_NETWORK_PORT     4040
 
 
 
@@ -116,8 +132,9 @@ enum {
 };
 
 typedef struct Input {
-  Uint16 down, pressed;
-  SDL_Point mouse;
+  // state
+  Uint16      down, pressed;
+  SDL_Point   mouse;
 } Input;
 
 Input inputs[PX_NUM_CONTROLLERS];
@@ -128,6 +145,19 @@ int fullscreen;
 Uint32 seed;
 int margc;
 char **margv;
+
+// UDP networking
+typedef struct Client {
+  int         active;
+  int         packets;
+  Uint32      last_timestamp;
+  Uint32      addr;
+  Uint16      port;
+  Input       input;
+} Client;
+
+Client  clients[PX_NUM_CONTROLLERS];
+int     server_fd, client_fd;
 
 
 
@@ -662,6 +692,7 @@ static int f_decompress(lua_State *L) {
 }
 
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  Lua Api Mapping
@@ -865,6 +896,47 @@ static void px_audio_mixer_callback(void *userdata, Uint8 *stream, int len) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Network Routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_start_server(lua_State *L) {
+  struct sockaddr_in in;
+
+  server_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (server_fd == INVALID_SOCKET) luaL_error(L, "Cannot create server socket");
+  SDL_zero(in);
+  in.sin_addr.s_addr = htonl(INADDR_ANY);
+  in.sin_port = htons(PX_NETWORK_PORT);
+  if (bind(server_fd, (struct sockaddr*)&in, sizeof(in))) luaL_error(L, "Cannot bind to UDP port");
+}
+
+static void net_start_client(lua_State *L) {
+  client_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (client_fd == INVALID_SOCKET) luaL_error(L, "Cannot create client socket");
+
+}
+
+static void net_initialize(lua_State *L) {
+  server_fd = client_fd = INVALID_SOCKET;
+  SDL_zero(clients);
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "WSAStartup() failed!");
+#endif // _WIN32
+}
+
+static void net_shutdown() {
+  if (client_fd == INVALID_SOCKET) closesocket(client_fd);
+  if (server_fd == INVALID_SOCKET) closesocket(server_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Main Loop and Events
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -1033,6 +1105,9 @@ static int px_lua_init(lua_State *L) {
   if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
   else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
 
+  // init network
+  net_initialize(L);
+
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
   window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_WINDOW_WIDTH, PX_WINDOW_HEIGHT, i);
@@ -1084,6 +1159,7 @@ static void px_shutdown() {
   if (renderer) SDL_DestroyRenderer(renderer);
   if (window) SDL_DestroyWindow(window);
   SDL_Quit();
+  net_shutdown();
 }
 
 int main(int argc, char **argv) {
