@@ -28,6 +28,7 @@
 
 #include "SDL.h"
 #include "lua53.h"
+#include "lz4.h"
 
 
 
@@ -632,6 +633,37 @@ static int f_title(lua_State *L) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Compression routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static int f_compress(lua_State *L) {
+  size_t source_size;
+  luaL_Buffer buffer;
+  const char *source = luaL_checklstring(L, 1, &source_size);
+  int dest_size = LZ4_compressBound((int)source_size);
+  char *dest = luaL_buffinitsize(L, &buffer, dest_size);
+  dest_size = LZ4_compress_default(source, dest, (int)source_size, dest_size);
+  if (!dest_size) luaL_error(L, "compression failed");
+  luaL_pushresultsize(&buffer, dest_size);
+  return 1;
+}
+
+static int f_decompress(lua_State *L) {
+  size_t source_size;
+  luaL_Buffer buffer;
+  const char *source = luaL_checklstring(L, 1, &source_size);
+  int dest_size = (int)luaL_optinteger(L, 2, 64 * 1024);
+  char *dest = luaL_buffinitsize(L, &buffer, dest_size);
+  dest_size = LZ4_decompress_safe(source, dest, (int)source_size, dest_size);
+  if (!dest_size) luaL_error(L, "decompression failed");
+  luaL_pushresultsize(&buffer, dest_size);
+  return 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Lua Api Mapping
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -662,6 +694,9 @@ static const luaL_Reg px_functions[] = {
   {"random", f_random},
   {"quit", f_quit},
   {"title", f_title},
+  // compression stuff
+  {"compress", f_compress},
+  {"decompress", f_decompress},
   {NULL, NULL}
 };
 
