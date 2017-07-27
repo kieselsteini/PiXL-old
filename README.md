@@ -99,7 +99,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 The very fast compression/decompression algorithm LZ4 is provided by PiXL. You can use to it to compress data on the fly e.g. for sending it over the network.
 
 * **compress(data)** Returns a LZ4 compressed version of the given string.
-* **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully.
+* **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully. If no *length* is given a 64kb buffer is allocated to decompress the given *data*.
 
 ## Networking
 
