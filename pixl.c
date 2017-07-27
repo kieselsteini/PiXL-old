@@ -1009,6 +1009,19 @@ static void px_open_controllers(lua_State *L) {
   }
 }
 
+static void px_set_button(int player, int button, int down) {
+  if (player >= 0 && player < PX_NUM_CONTROLLERS) {
+    button = 1 << button;
+    if (down) {
+      inputs[player].down |= button;
+      inputs[player].pressed |= button;
+    }
+    else {
+      inputs[player].down &= ~button;
+    }
+  }
+}
+
 static void px_handle_keys(const SDL_Event *ev) {
   int button;
   // handle special keys
@@ -1034,12 +1047,7 @@ static void px_handle_keys(const SDL_Event *ev) {
   case SDLK_SPACE: case SDLK_RETURN: button = PX_BUTTON_START; break;
   default: return;
   }
-  button = 1 << button;
-  if (ev->type == SDL_KEYDOWN) {
-    inputs[0].down |= button;
-    inputs[0].pressed |= button;
-  }
-  else inputs[0].down &= ~button;
+  px_set_button(0, button, ev->type == SDL_KEYDOWN);
 }
 
 static void px_handle_mouse(const SDL_Event *ev) {
@@ -1049,17 +1057,11 @@ static void px_handle_mouse(const SDL_Event *ev) {
   case SDL_BUTTON_RIGHT: button = PX_BUTTON_B; break;
   default: return;
   }
-  button = 1 << button;
-  if (ev->type == SDL_MOUSEBUTTONDOWN) {
-    inputs[0].down |= button;
-    inputs[0].pressed |= button;
-  }
-  else inputs[0].down &= ~button;
+  px_set_button(0, button, ev->type == SDL_MOUSEBUTTONDOWN);
 }
 
 static void px_handle_controller(const SDL_Event *ev) {
   int button;
-  if (ev->cbutton.which < 0 || ev->cbutton.which >= PX_NUM_CONTROLLERS) return;
   switch (ev->cbutton.button) {
   case SDL_CONTROLLER_BUTTON_A: button = PX_BUTTON_A; break;
   case SDL_CONTROLLER_BUTTON_B: button = PX_BUTTON_B; break;
@@ -1072,12 +1074,7 @@ static void px_handle_controller(const SDL_Event *ev) {
   case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: button = PX_BUTTON_RIGHT; break;
   default: return;
   }
-  button = 1 << button;
-  if (ev->type == SDL_CONTROLLERBUTTONDOWN) {
-    inputs[ev->cbutton.which].down |= button;
-    inputs[ev->cbutton.which].pressed |= button;
-  }
-  else inputs[ev->cbutton.which].down &= ~button;
+  px_set_button(ev->cbutton.which, button, ev->type == SDL_CONTROLLERBUTTONDOWN);
 }
 
 static void px_render_screen(lua_State *L) {
