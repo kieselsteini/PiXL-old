@@ -30,6 +30,22 @@
 #include "lua53.h"
 #include "lz4.h"
 
+// SDL2 pragmas (MS VS C++)
+#ifdef _WIN32
+#pragma comment(lib, "SDL2.lib")
+#pragma comment(lib, "SDL2main.lib")
+#endif // _WIN32
+
+// network includes
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+#else
+#define INVALID_SOCKET -1
+#define closesocket(s) close(s)
+#endif // _WIN32
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,8 +132,9 @@ enum {
 };
 
 typedef struct Input {
-  Uint16 down, pressed;
-  SDL_Point mouse;
+  // state
+  Uint16      down, pressed;
+  SDL_Point   mouse;
 } Input;
 
 Input inputs[PX_NUM_CONTROLLERS];
@@ -128,6 +145,9 @@ int fullscreen;
 Uint32 seed;
 int margc;
 char **margv;
+
+// UDP networking
+int socket_fd;
 
 
 
@@ -664,6 +684,109 @@ static int f_decompress(lua_State *L) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Networking routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_create_socket(lua_State *L) {
+  if (socket_fd == INVALID_SOCKET) {
+    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
+  }
+}
+
+static int f_bind(lua_State *L) {
+  struct sockaddr_in sin;
+  Uint16 port = (Uint16)luaL_checkinteger(L, 1);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(INADDR_ANY);
+  // bind socket
+  net_create_socket(L);
+  if (bind(socket_fd, (struct sockaddr*)&sin, sizeof(sin))) luaL_error(L, "Cannot bind on port %d", port);
+  return 0;
+}
+
+static int f_unbind(lua_State *L) {
+  (void)L;
+  if (socket_fd != INVALID_SOCKET) {
+    closesocket(socket_fd);
+    socket_fd = INVALID_SOCKET;
+  }
+  return 0;
+}
+
+static int f_recv(lua_State *L) {
+  struct sockaddr_in sin;
+  int sinlen, datalen = 1024 * 4;
+  luaL_Buffer buffer;
+  char *data;
+  struct timeval tv;
+  fd_set set;
+  // check socket for data
+  if (socket_fd == INVALID_SOCKET) return 0;
+  FD_ZERO(&set); FD_SET(socket_fd, &set);
+  tv.tv_sec = 0; tv.tv_usec = 0;
+  if (select(socket_fd + 1, &set, NULL, NULL, &tv) <= 0) return 0;
+  if (!FD_ISSET(socket_fd, &set)) return 0;
+  // reset addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = 0;
+  sin.sin_addr.s_addr = INADDR_ANY;
+  sinlen = sizeof(sin);
+  // receive
+  data = luaL_buffinitsize(L, &buffer, datalen);
+  datalen = recvfrom(socket_fd, data, datalen, 0, (struct sockaddr*)&sin, &sinlen);
+  if (datalen < 0) return 0;
+  luaL_pushresultsize(&buffer, datalen);
+  lua_pushinteger(L, ntohl(sin.sin_addr.s_addr));
+  lua_pushinteger(L, ntohs(sin.sin_port));
+  return 3;
+}
+
+static int f_send(lua_State *L) {
+  struct sockaddr_in sin;
+  size_t datalen;
+  int sent;
+  const char *data = luaL_checklstring(L, 1, &datalen);
+  Uint32 host = (Uint32)luaL_checkinteger(L, 2);
+  Uint16 port = (Uint16)luaL_checkinteger(L, 3);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(host);
+  // sned
+  net_create_socket(L);
+  sent = sendto(socket_fd, data, (int)datalen, 0, (struct sockaddr*)&sin, sizeof(sin));
+  lua_pushboolean(L, sent == (int)datalen);
+  return 1;
+}
+
+static int f_resolve(lua_State *L) {
+  struct addrinfo hints, *result;
+  const char *hostname = luaL_checkstring(L, 1);
+  SDL_zero(hints);
+  hints.ai_family = AF_INET;
+  if (getaddrinfo(hostname, NULL, &hints, &result) == 0) {
+    if (result) {
+      lua_pushinteger(L, ntohl(((struct sockaddr_in*)(result->ai_addr))->sin_addr.s_addr));
+      freeaddrinfo(result);
+      return 1;
+    }
+  }
+  lua_pushnil(L);
+  lua_pushfstring(L, "cannot resolve " LUA_QS, hostname);
+  return 2;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Lua Api Mapping
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -697,6 +820,12 @@ static const luaL_Reg px_functions[] = {
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
+  // network
+  {"bind", f_bind},
+  {"unbind", f_unbind},
+  {"recv", f_recv},
+  {"send", f_send},
+  {"resolve", f_resolve},
   {NULL, NULL}
 };
 
@@ -1002,6 +1131,7 @@ static void px_run_main_loop(lua_State *L) {
     delta_ticks += current_tick - last_tick;
     last_tick = current_tick;
     for (; delta_ticks >= PX_FPS_TICKS; delta_ticks -= PX_FPS_TICKS) {
+      // do update call
       if (lua_getglobal(L, "update") == LUA_TFUNCTION) lua_call(L, 0, 0);
       else lua_pop(L, 1);
       // reset input
@@ -1020,6 +1150,23 @@ static void px_run_main_loop(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+static void net_initialize(lua_State *L) {
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
+#else
+  (void)L;
+#endif // _WIN32
+  socket_fd = INVALID_SOCKET;
+}
+
+static void net_shutdown() {
+  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
+
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
   int i;
@@ -1032,6 +1179,9 @@ static int px_lua_init(lua_State *L) {
   // check for fullscreen
   if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
   else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
+
+  // init network
+  net_initialize(L);
 
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
@@ -1084,11 +1234,23 @@ static void px_shutdown() {
   if (renderer) SDL_DestroyRenderer(renderer);
   if (window) SDL_DestroyWindow(window);
   SDL_Quit();
+  net_shutdown();
+}
+
+static void px_register_args(lua_State *L, int argc, char **argv) {
+  int i;
+  lua_newtable(L);
+  for (i = 1; i < argc; ++i) {
+    lua_pushstring(L, argv[i]);
+    lua_rawseti(L, -2, i);
+  }
+  lua_setglobal(L, "params");
 }
 
 int main(int argc, char **argv) {
   lua_State *L = luaL_newstate();
   margc = argc; margv = argv;
+  px_register_args(L, argc, argv);
   luaL_openlibs(L);
   luaL_requiref(L, "pixl", px_lua_open, 1);
   lua_getglobal(L, "debug"); lua_getfield(L, -1, "traceback"); lua_remove(L, -2);

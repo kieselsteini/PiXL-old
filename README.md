@@ -94,6 +94,16 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
 
+## Networking
+
+PiXL provides a very simple networking interface for sending/receiving UDP packets. But beware, that UDP is an unreliable protocol which may drop packets or receive them in a different order.
+
+* **bind(port)** Bind to the given port in order to receive UDP packets on a known port. This is useful for the server part.
+* **unbind()** Unbinds the the UDP socket from the port. It actually closes and recreates the UDP socket.
+* **recv()** Returns *data*, *host*, *port* or nil when there's no packet to receive. *data* is a string containing the payload, *host* is a integer representing the IPv4 address and *port* is an integer containing the source port of the packet.
+* **send(data, host, port)** Sends data to the given *host* and *port*. Host is an integer representing the IPv4 address. You can use the *host* values returned from *recv* and *resolve* here.
+* **resolve(hostname)** Returns an integer representing the resolved IPv4 address of *hostname*.
+
 ## Parameters for PiXL executable
 
 * **-video driver** Defines which video driver should be used by PiXL (and SDL2). Please check https://wiki.libsdl.org/SDL_HINT_RENDER_DRIVER?highlight=%28%5CbCategoryDefine%5Cb%29%7C%28CategoryHints%29 for possible values.
