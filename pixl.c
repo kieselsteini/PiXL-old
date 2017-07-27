@@ -41,7 +41,14 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
+typedef int socklen_t;
 #else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <netdb.h>
 #define INVALID_SOCKET -1
 #define closesocket(s) close(s)
 #endif // _WIN32
@@ -720,7 +727,8 @@ static int f_unbind(lua_State *L) {
 
 static int f_recv(lua_State *L) {
   struct sockaddr_in sin;
-  int sinlen, datalen = 1024 * 4;
+  int datalen = 1024 * 4;
+  socklen_t sinlen;
   luaL_Buffer buffer;
   char *data;
   struct timeval tv;
