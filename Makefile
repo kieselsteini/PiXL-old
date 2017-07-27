@@ -1,6 +1,6 @@
 CC=cc -O2 -Wall -Wextra `sdl2-config --cflags` -DLUA_USE_POSIX
 LIB=`sdl2-config --libs` -lm -ldl
-OBJ=lua53.o pixl.o
+OBJ=lua53.o lz4.o pixl.o
 BIN=pixl
 
 default: $(OBJ)
