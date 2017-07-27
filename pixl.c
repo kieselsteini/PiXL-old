@@ -1266,6 +1266,9 @@ int main(int argc, char **argv) {
   if (lua_pcall(L, 0, 0, -2) != LUA_OK) {
     const char *message = luaL_gsub(L, lua_tostring(L, -1), "\t", "  ");
     if (audio_device) SDL_PauseAudioDevice(audio_device, SDL_TRUE);
+	#ifndef _WIN32
+	fprintf(stderr, "=[ PiXL Panic ]=\n%s\n", message);
+	#endif // _WIN32
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PiXL Panic", message, window);
   }
   lua_close(L);
