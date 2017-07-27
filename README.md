@@ -94,6 +94,13 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
 
+## Compression
+
+The very fast compression/decompression algorithm LZ4 is provided by PiXL. You can use to it to compress data on the fly e.g. for sending it over the network.
+
+* **compress(data)** Returns a LZ4 compressed version of the given string.
+* **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully.
+
 ## Networking
 
 PiXL provides a very simple networking interface for sending/receiving UDP packets. But beware, that UDP is an unreliable protocol which may drop packets or receive them in a different order.
