@@ -30,15 +30,18 @@
 #include "lua53.h"
 #include "lz4.h"
 
+// SDL2 pragmas (MS VS C++)
+#ifdef _WIN32
+#pragma comment(lib, "SDL2.lib")
+#pragma comment(lib, "SDL2main.lib")
+#endif // _WIN32
+
+// network includes
 #ifdef _WIN32
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
 #else
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #define INVALID_SOCKET -1
 #define closesocket(s) close(s)
 #endif // _WIN32
@@ -72,9 +75,6 @@
 
 // Number of controllers
 #define PX_NUM_CONTROLLERS  8
-
-// Default network port
-#define PX_NETWORK_PORT     4040
 
 
 
@@ -147,17 +147,7 @@ int margc;
 char **margv;
 
 // UDP networking
-typedef struct Client {
-  int         active;
-  int         packets;
-  Uint32      last_timestamp;
-  Uint32      addr;
-  Uint16      port;
-  Input       input;
-} Client;
-
-Client  clients[PX_NUM_CONTROLLERS];
-int     server_fd, client_fd;
+int socket_fd;
 
 
 
@@ -692,6 +682,108 @@ static int f_decompress(lua_State *L) {
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Networking routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_create_socket(lua_State *L) {
+  if (socket_fd == INVALID_SOCKET) {
+    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
+  }
+}
+
+static int f_bind(lua_State *L) {
+  struct sockaddr_in sin;
+  Uint16 port = (Uint16)luaL_checkinteger(L, 1);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(INADDR_ANY);
+  // bind socket
+  net_create_socket(L);
+  if (bind(socket_fd, (struct sockaddr*)&sin, sizeof(sin))) luaL_error(L, "Cannot bind on port %d", port);
+  return 0;
+}
+
+static int f_unbind(lua_State *L) {
+  (void)L;
+  if (socket_fd != INVALID_SOCKET) {
+    closesocket(socket_fd);
+    socket_fd = INVALID_SOCKET;
+  }
+  return 0;
+}
+
+static int f_recv(lua_State *L) {
+  struct sockaddr_in sin;
+  int sinlen, datalen = 1024 * 4;
+  luaL_Buffer buffer;
+  char *data;
+  struct timeval tv;
+  fd_set set;
+  // check socket for data
+  if (socket_fd == INVALID_SOCKET) return 0;
+  FD_ZERO(&set); FD_SET(socket_fd, &set);
+  tv.tv_sec = 0; tv.tv_usec = 0;
+  if (select(socket_fd + 1, &set, NULL, NULL, &tv) <= 0) return 0;
+  if (!FD_ISSET(socket_fd, &set)) return 0;
+  // reset addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = 0;
+  sin.sin_addr.s_addr = INADDR_ANY;
+  sinlen = sizeof(sin);
+  // receive
+  data = luaL_buffinitsize(L, &buffer, datalen);
+  datalen = recvfrom(socket_fd, data, datalen, 0, (struct sockaddr*)&sin, &sinlen);
+  if (datalen < 0) return 0;
+  luaL_pushresultsize(&buffer, datalen);
+  lua_pushinteger(L, ntohl(sin.sin_addr.s_addr));
+  lua_pushinteger(L, ntohs(sin.sin_port));
+  return 3;
+}
+
+static int f_send(lua_State *L) {
+  struct sockaddr_in sin;
+  size_t datalen;
+  int sent;
+  const char *data = luaL_checklstring(L, 1, &datalen);
+  Uint32 host = (Uint32)luaL_checkinteger(L, 2);
+  Uint16 port = (Uint16)luaL_checkinteger(L, 3);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(host);
+  // sned
+  net_create_socket(L);
+  sent = sendto(socket_fd, data, (int)datalen, 0, (struct sockaddr*)&sin, sizeof(sin));
+  lua_pushboolean(L, sent == (int)datalen);
+  return 1;
+}
+
+static int f_resolve(lua_State *L) {
+  struct addrinfo hints, *result;
+  const char *hostname = luaL_checkstring(L, 1);
+  SDL_zero(hints);
+  hints.ai_family = AF_INET;
+  if (getaddrinfo(hostname, NULL, &hints, &result) == 0) {
+    if (result) {
+      lua_pushinteger(L, ntohl(((struct sockaddr_in*)(result->ai_addr))->sin_addr.s_addr));
+      freeaddrinfo(result);
+      return 1;
+    }
+  }
+  lua_pushnil(L);
+  lua_pushfstring(L, "cannot resolve " LUA_QS, hostname);
+  return 2;
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -728,6 +820,12 @@ static const luaL_Reg px_functions[] = {
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
+  // network
+  {"bind", f_bind},
+  {"unbind", f_unbind},
+  {"recv", f_recv},
+  {"send", f_send},
+  {"resolve", f_resolve},
   {NULL, NULL}
 };
 
@@ -896,47 +994,6 @@ static void px_audio_mixer_callback(void *userdata, Uint8 *stream, int len) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-//  Network Routines
-//
-////////////////////////////////////////////////////////////////////////////////
-
-static void net_start_server(lua_State *L) {
-  struct sockaddr_in in;
-
-  server_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (server_fd == INVALID_SOCKET) luaL_error(L, "Cannot create server socket");
-  SDL_zero(in);
-  in.sin_addr.s_addr = htonl(INADDR_ANY);
-  in.sin_port = htons(PX_NETWORK_PORT);
-  if (bind(server_fd, (struct sockaddr*)&in, sizeof(in))) luaL_error(L, "Cannot bind to UDP port");
-}
-
-static void net_start_client(lua_State *L) {
-  client_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (client_fd == INVALID_SOCKET) luaL_error(L, "Cannot create client socket");
-
-}
-
-static void net_initialize(lua_State *L) {
-  server_fd = client_fd = INVALID_SOCKET;
-  SDL_zero(clients);
-#ifdef _WIN32
-  WSADATA wsa;
-  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "WSAStartup() failed!");
-#endif // _WIN32
-}
-
-static void net_shutdown() {
-  if (client_fd == INVALID_SOCKET) closesocket(client_fd);
-  if (server_fd == INVALID_SOCKET) closesocket(server_fd);
-#ifdef _WIN32
-  WSACleanup();
-#endif // _WIN32
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-//
 //  Main Loop and Events
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -1074,6 +1131,7 @@ static void px_run_main_loop(lua_State *L) {
     delta_ticks += current_tick - last_tick;
     last_tick = current_tick;
     for (; delta_ticks >= PX_FPS_TICKS; delta_ticks -= PX_FPS_TICKS) {
+      // do update call
       if (lua_getglobal(L, "update") == LUA_TFUNCTION) lua_call(L, 0, 0);
       else lua_pop(L, 1);
       // reset input
@@ -1091,6 +1149,23 @@ static void px_run_main_loop(lua_State *L) {
 //  Init & Shutdown
 //
 ////////////////////////////////////////////////////////////////////////////////
+
+static void net_initialize(lua_State *L) {
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
+#else
+  (void)L;
+#endif // _WIN32
+  socket_fd = INVALID_SOCKET;
+}
+
+static void net_shutdown() {
+  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
 
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
@@ -1162,9 +1237,20 @@ static void px_shutdown() {
   net_shutdown();
 }
 
+static void px_register_args(lua_State *L, int argc, char **argv) {
+  int i;
+  lua_newtable(L);
+  for (i = 1; i < argc; ++i) {
+    lua_pushstring(L, argv[i]);
+    lua_rawseti(L, -2, i);
+  }
+  lua_setglobal(L, "params");
+}
+
 int main(int argc, char **argv) {
   lua_State *L = luaL_newstate();
   margc = argc; margv = argv;
+  px_register_args(L, argc, argv);
   luaL_openlibs(L);
   luaL_requiref(L, "pixl", px_lua_open, 1);
   lua_getglobal(L, "debug"); lua_getfield(L, -1, "traceback"); lua_remove(L, -2);
