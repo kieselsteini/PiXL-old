@@ -1089,7 +1089,7 @@ static void px_render_screen(lua_State *L) {
   const SDL_Color *color;
   Uint8 *pixels, *p;
   int x, y, pitch;
-  
+
   // update texture
   if (SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch)) luaL_error(L, "SDL_LockTexture() failed: %s", SDL_GetError());
   for (y = 0; y < PX_SCREEN_HEIGHT; ++y) {
@@ -1263,9 +1263,9 @@ int main(int argc, char **argv) {
   if (lua_pcall(L, 0, 0, -2) != LUA_OK) {
     const char *message = luaL_gsub(L, lua_tostring(L, -1), "\t", "  ");
     if (audio_device) SDL_PauseAudioDevice(audio_device, SDL_TRUE);
-	#ifndef _WIN32
-	fprintf(stderr, "=[ PiXL Panic ]=\n%s\n", message);
-	#endif // _WIN32
+    #ifndef _WIN32
+    fprintf(stderr, "=[ PiXL Panic ]=\n%s\n", message);
+    #endif // _WIN32
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PiXL Panic", message, window);
   }
   lua_close(L);

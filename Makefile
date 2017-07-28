@@ -8,4 +8,3 @@ default: $(OBJ)
 
 clean:
 	rm -f $(BIN) $(OBJ)
-
