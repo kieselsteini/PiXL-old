@@ -83,6 +83,9 @@ typedef int socklen_t;
 // Number of controllers
 #define PX_NUM_CONTROLLERS  8
 
+// Num of PAKEntries
+#define PX_NUM_PAK_ENTRIES  256
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,6 +158,17 @@ char **margv;
 
 // UDP networking
 int socket_fd;
+
+// Quake PAK file handling
+typedef struct PAKEntry {
+  char      filename[56];
+  Uint32    offset;
+  Uint32    length;
+  SDL_RWops *ctx;
+} PAKEntry;
+
+PAKEntry  pak_entries[PX_NUM_PAK_ENTRIES];
+int       pak_count = 0;
 
 
 
@@ -356,6 +370,142 @@ static const char *px_check_arg(const char *name) {
   int i = px_check_parm(name);
   if (i && (i + 1) < margc) return margv[i + 1];
   return NULL;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Quake PAK handling
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static int pak_open_archive(lua_State *L, const char *filename) {
+  Uint32 dir_offset, dir_length;
+  int i, num;
+  char magic[4];
+  // open PAK file and check magic etc.
+  SDL_RWops *rw = SDL_RWFromFile(filename, "rb");
+  if (!rw) return 0;
+  SDL_RWread(rw, magic, 1, 4);
+  dir_offset = SDL_ReadLE32(rw);
+  dir_length = SDL_ReadLE32(rw);
+  if (SDL_memcmp(magic, "PACK", 4) || (dir_length % 64)) {
+    SDL_RWclose(rw);
+    return luaL_error(L, "Invalid PAK file " LUA_QS, filename);
+  }
+  if (SDL_RWseek(rw, dir_offset, RW_SEEK_SET) != dir_offset) {
+    SDL_RWclose(rw);
+    return luaL_error(L, "Cannot read PAK directory of " LUA_QS, filename);
+  }
+  // read directory
+  num = dir_length / 64;
+  for (i = 0; i < num && pak_count < PX_NUM_PAK_ENTRIES; ++i, ++pak_count) {
+    SDL_RWread(rw, pak_entries[pak_count].filename, 1, 56);
+    pak_entries[pak_count].offset = SDL_ReadLE32(rw);
+    pak_entries[pak_count].length = SDL_ReadLE32(rw);
+    pak_entries[pak_count].ctx = rw;
+  }
+  return 1;
+}
+
+static int pak_load_file(lua_State *L, const char *filename) {
+  int         i;
+  SDL_RWops   *rw;
+  luaL_Buffer buffer;
+  char        *data;
+  int         should_close;
+  Uint32      length;
+
+  // try to read from current directory
+  rw = SDL_RWFromFile(filename, "rb");
+  if (rw) {
+    Sint64 rw_size = SDL_RWsize(rw);
+    if (rw_size < 0) {
+      SDL_RWclose(rw);
+      return luaL_error(L, "Cannot get filesize of " LUA_QS, filename);
+    }
+    length = (Uint32)rw_size;
+    should_close = 1;
+  }
+  else {
+    // try to find inside PAK
+    for (i = 0, rw = NULL; i < pak_count; ++i) {
+      if (!SDL_strcmp(filename, pak_entries[i].filename)) {
+        rw = pak_entries[i].ctx;
+        length = pak_entries[i].length;
+        should_close = 0;
+        if (SDL_RWseek(rw, pak_entries[i].offset, RW_SEEK_SET) != pak_entries[i].offset) {
+          return luaL_error(L, "Cannot seek to file " LUA_QS, filename);
+        }
+        break;
+      }
+    }
+  }
+  if (!rw) return luaL_error(L, "Cannot find file " LUA_QS, filename);
+  data = luaL_buffinitsize(L, &buffer, length);
+  Sint64 a = SDL_RWread(rw, data, 1, length);
+  if (a != length) {
+    if (should_close) SDL_RWclose(rw);
+    return luaL_error(L, "Cannot read contents of file " LUA_QS, filename);
+  }
+  if (should_close) SDL_RWclose(rw);
+  luaL_pushresultsize(&buffer, length);
+  return 1;
+}
+
+static void pak_open_archives(lua_State *L) {
+  char  filename[256];
+  int   i;
+  for (i = 0; i < 10; ++i) {
+    SDL_snprintf(filename, sizeof(filename), "data%d.pak", i);
+    pak_open_archive(L, filename);
+  }
+}
+
+static void pak_create_archive(lua_State *L, int index) {
+  int i;
+  Uint32 dir_offset;
+  // create new file and write dummy header
+  SDL_RWops *rw = SDL_RWFromFile("new.pak", "wb");
+  if (!rw) luaL_error(L, "Cannot create new.pak");
+  SDL_WriteLE32(rw, 0); SDL_WriteLE32(rw, 0); SDL_WriteLE32(rw, 0);
+  // open all files from command line and append
+  for (; index < margc && pak_count < PX_NUM_PAK_ENTRIES; ++index) {
+    void *buffer;
+    Sint64 length;
+    SDL_RWops *src;
+    // open file
+    src = SDL_RWFromFile(margv[index], "rb");
+    if (!src) luaL_error(L, "Cannot open file " LUA_QS, margv[index]);
+    length = SDL_RWsize(src);
+    if (length < 0) luaL_error(L, "Cannot determine size of file " LUA_QS, margv[index]);
+    buffer = SDL_malloc(length);
+    if (!buffer) luaL_error(L, "Cannot create buffer for file " LUA_QS, margv[index]);
+    if (SDL_RWread(src, buffer, 1, length) != length) luaL_error(L, "Cannot read file contents of " LUA_QS, margv[index]);
+    SDL_RWclose(src);
+    // create entry
+    SDL_strlcpy(pak_entries[pak_count].filename, margv[index], 56);
+    pak_entries[pak_count].offset = (Uint32)SDL_RWtell(rw);
+    pak_entries[pak_count].length = (Uint32)length;
+    ++pak_count;
+    // write data
+    if (SDL_RWwrite(rw, buffer, 1, length) != length) luaL_error(L, "Cannot write file contents of " LUA_QS, margv[index]);
+    SDL_free(buffer);
+  }
+  // write directory
+  dir_offset = (Uint32)SDL_RWtell(rw);
+  for (i = 0; i < pak_count; ++i) {
+    SDL_RWwrite(rw, pak_entries[i].filename, 1, 56);
+    SDL_WriteLE32(rw, pak_entries[i].offset);
+    SDL_WriteLE32(rw, pak_entries[i].length);
+  }
+  // fix PAK header
+  SDL_RWseek(rw, 0, RW_SEEK_SET);
+  SDL_RWwrite(rw, "PACK", 1, 4);
+  SDL_WriteLE32(rw, dir_offset);
+  SDL_WriteLE32(rw, pak_count * 64);
+  SDL_RWclose(rw);
 }
 
 
@@ -656,6 +806,11 @@ static int f_title(lua_State *L) {
   return 0;
 }
 
+static int f_load(lua_State *L) {
+  const char *filename = luaL_checkstring(L, 1);
+  return pak_load_file(L, filename);
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -825,6 +980,7 @@ static const luaL_Reg px_functions[] = {
   {"random", f_random},
   {"quit", f_quit},
   {"title", f_title},
+  {"load", f_load},
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
@@ -1177,6 +1333,13 @@ static int px_lua_init(lua_State *L) {
   int i;
   const char *str;
 
+  // check if we should only create a PAK archive
+  i = px_check_parm("-pak");
+  if (i > 0) {
+    pak_create_archive(L, i + 1);
+    return 0;
+  }
+
   // setup some hints
   str = px_check_arg("-video");
   if (str) SDL_SetHint(SDL_HINT_RENDER_DRIVER, str);
@@ -1222,10 +1385,14 @@ static int px_lua_init(lua_State *L) {
   px_open_controllers(L);
   px_randomseed(47 * 1024); // reset prng
 
+  // open PAK files
+  pak_open_archives(L);
+
   // load the Lua script
-  str = px_check_arg("-file");
-  if (!str) str = "game.lua";
-  if (luaL_loadfile(L, str)) lua_error(L);
+  pak_load_file(L, "game.lua");
+  str = lua_tostring(L, -1);
+  if (luaL_loadbuffer(L, lua_tostring(L, -1), luaL_len(L, -1), "@game.lua") != LUA_OK) lua_error(L);
+  lua_remove(L, -2);
   lua_call(L, 0, 0);
 
   // run main loop
