@@ -6,6 +6,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * games can be written with simple Lua commands
 * true retro feeling with small resolution and chiptune sounds / music
 * uses stock Lua 5.3 with all new features like integers and bit operations
+* provides a simple network interface
 
 ## Limitations
 
@@ -13,6 +14,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * 16 colors with a fixed palette
 * 8x8 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
+* only simple UDP (unreliable networking)
 
 ## Goals
 
