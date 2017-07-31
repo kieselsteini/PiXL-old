@@ -7,9 +7,26 @@
 local pixl = require 'pixl'
 local bitmap_size = 8
 local bitmap
+local show_grid = true
 local color = 10
 local cursor_sprite = '008888880f08888807f08888077f08880777f0880777ff080077f00880000088'
 
+
+function fill(sx, sy)
+  local replace_color = bitmap[sx][sy]
+  if replace_color == color then return end
+  local function _fill(x, y)
+    if x < 1 or x > bitmap_size or y < 1 or y > bitmap_size then
+      return
+    end
+    if bitmap[x][y] == replace_color then
+      bitmap[x][y] = color
+      _fill(x - 1, y); _fill(x + 1, y)
+      _fill(x, y - 1); _fill(x, y + 1)
+    end
+  end
+  _fill(sx, sy)
+end
 
 function init()
   bitmap = {}
@@ -26,6 +43,7 @@ function update()
   pixl.clear(5)
   local mx, my = pixl.mouse()
   local A = pixl.btn('A')
+  local B = pixl.btnp('B')
 
   -- draw editor
   local px_size
@@ -37,10 +55,24 @@ function update()
     local xl, xh = (x - 1) * px_size, x * px_size - 1
     for y = 1, bitmap_size do
       local yl, yh = (y - 1) * px_size, y * px_size - 1
-      if A and mx >= xl and mx <= xh and my >= yl and my <= yh then
-        bitmap[x][y] = color
+      if mx >= xl and mx <= xh and my >= yl and my <= yh then
+        pixl.print(12, 200, 16, string.format('%dx%d', x - 1, y - 1))
+        if A then
+          bitmap[x][y] = color
+        elseif B then
+          fill(x, y)
+        end
       end
       pixl.fill(bitmap[x][y], xl, yl, xh, yh)
+    end
+  end
+
+  -- draw grid
+  if show_grid then
+    for i = 1, bitmap_size + 1 do
+      local j = (i - 1) * px_size
+      pixl.line(0, j, 0, j, bitmap_size * px_size)
+      pixl.line(0, 0, j, bitmap_size * px_size, j)
     end
   end
 
@@ -110,6 +142,7 @@ function update()
       end
     end
   end
+  if menu('Grid') then show_grid = not show_grid end
 
   -- size menus
   menuX, menuY = 0, 144 + 8
