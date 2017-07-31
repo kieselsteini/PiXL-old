@@ -463,6 +463,17 @@ static void pak_open_archives(lua_State *L) {
   }
 }
 
+static void pak_close_archives() {
+  int i;
+  SDL_RWops *old = NULL;
+  for (i = 0; i < pak_count; ++i) {
+    if (pak_entries[i].ctx != old) {
+      old = pak_entries[i].ctx;
+      SDL_RWclose(old);
+    }
+  }
+}
+
 static void pak_create_archive(lua_State *L, int index) {
   int i;
   Uint32 dir_offset;
@@ -1401,6 +1412,7 @@ static int px_lua_init(lua_State *L) {
 }
 
 static void px_shutdown() {
+  pak_close_archives();
   if (audio_device) SDL_CloseAudioDevice(audio_device);
   if (texture) SDL_DestroyTexture(texture);
   if (renderer) SDL_DestroyRenderer(renderer);
