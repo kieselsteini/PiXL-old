@@ -430,7 +430,7 @@ static int pak_load_file(lua_State *L, const char *filename) {
   }
   else {
     // try to find inside PAK
-    for (i = 0, rw = NULL; i < pak_count; ++i) {
+    for (i = pak_count - 1, rw = NULL; i >= 0; --i) {
       if (!SDL_strcmp(filename, pak_entries[i].filename)) {
         rw = pak_entries[i].ctx;
         length = pak_entries[i].length;
@@ -1345,7 +1345,7 @@ static int px_lua_init(lua_State *L) {
   const char *str;
 
   // check if we should only create a PAK archive
-  i = px_check_parm("-pak");
+  i = px_check_parm("-createpak");
   if (i > 0) {
     pak_create_archive(L, i + 1);
     return 0;
@@ -1398,6 +1398,8 @@ static int px_lua_init(lua_State *L) {
 
   // open PAK files
   pak_open_archives(L);
+  str = px_check_arg("-pak");
+  if (str) pak_open_archive(L, str);
 
   // load the Lua script
   pak_load_file(L, "game.lua");

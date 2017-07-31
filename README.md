@@ -7,6 +7,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * true retro feeling with small resolution and chiptune sounds / music
 * uses stock Lua 5.3 with all new features like integers and bit operations
 * provides a simple network interface
+* Quake 1 like PAK files if you need more than one Lua file
 
 ## Limitations
 
@@ -20,11 +21,14 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 * **Ready-to-go package** just create a "game.lua" and you are ready to go
 * **Portability** using SDL2 it will run on Windows, MacOS X, Linux and other platforms
-* **Easy Distribution** on Windows you need only PiXL.exe / SDL2.dll and your game.lua file
+* **Easy Distribution** on Windows you need only PiXL.exe, SDL2.dll, LICENSES.txt and your data?.pak files
 
 ## Documentation
 
-On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details.
+PiXL will try to open *data0.pak* to *data9.pak* on startup. Those PAK files are Quake 1 PAK files, which are easy to write and read and can contain multiple files.
+Note that higher number *dataN.pak* files have precedence over lover number PAK archives for searching files.
+Then PiXL will try to open *game.lua* either from the current directory or inside of the PAK files and compile it.
+When compilation and initial execution was ok, the main loop will start. The main loop will call the *init()* function once and the *update()* function for every frame.
 
 ## Callbacks
 
@@ -119,7 +123,8 @@ PiXL provides a very simple networking interface for sending/receiving UDP packe
 * **-audio driver** Defines the audio driver which will be used by PiXL (and SDL2).
 * **-nosound** Disables sound completely.
 * **-window** Start in window mode instead of fullscreen.
-* **-file filename** Overrides the Lua file which will be loaded on startup.
+* **-createpak filename1 .. filenameN** Creates a new Quake PAK file named *new.pak* which contain all files specified after *-pak*. When everything was ok PiXL will quit.
+* **-pak filename** Also opens *filename* as an additional PAK file on start. This file has precedence over the standard files.
 
 ## Hot Keys
 
