@@ -28,6 +28,30 @@
 
 #include "SDL.h"
 #include "lua53.h"
+#include "lz4.h"
+
+// SDL2 pragmas (MS VS C++)
+#ifdef _WIN32
+#pragma comment(lib, "SDL2.lib")
+#pragma comment(lib, "SDL2main.lib")
+#endif // _WIN32
+
+// network includes
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <WS2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
+typedef int socklen_t;
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <netdb.h>
+#define INVALID_SOCKET -1
+#define closesocket(s) close(s)
+#endif // _WIN32
 
 
 
@@ -116,9 +140,9 @@ enum {
 };
 
 typedef struct Input {
-  Uint8 down[PX_BUTTON_LAST];
-  Uint8 pressed[PX_BUTTON_LAST];
-  SDL_Point mouse;
+  // state
+  Uint16      down, pressed;
+  SDL_Point   mouse;
 } Input;
 
 Input inputs[PX_NUM_CONTROLLERS];
@@ -129,6 +153,9 @@ int fullscreen;
 Uint32 seed;
 int margc;
 char **margv;
+
+// UDP networking
+int socket_fd;
 
 
 
@@ -611,24 +638,24 @@ static int f_pause(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static int _check_controller(lua_State *L) {
-  int i = (int)luaL_optinteger(L, 2, 0);
-  luaL_argcheck(L, i >= 0 && i < PX_NUM_CONTROLLERS, 2, "invalid controller");
-  return i;
-}
-
 static int _check_button(lua_State *L) {
   static const char *options[] = { "A", "B", "X", "Y", "LEFT", "RIGHT", "UP", "DOWN", "START", NULL };
-  return luaL_checkoption(L, 1, NULL, options);
+  return 1 << luaL_checkoption(L, 1, NULL, options);
+}
+
+static int _check_controller(lua_State *L) {
+  int controller = (int)luaL_optinteger(L, 2, 0);
+  luaL_argcheck(L, controller >= 0 && controller < PX_NUM_CONTROLLERS, 2, "invalid controller");
+  return controller;
 }
 
 static int f_btn(lua_State *L) {
-  lua_pushboolean(L, inputs[_check_controller(L)].down[_check_button(L)]);
+  lua_pushboolean(L, inputs[_check_controller(L)].down & _check_button(L));
   return 1;
 }
 
 static int f_btnp(lua_State *L) {
-  lua_pushboolean(L, inputs[_check_controller(L)].pressed[_check_button(L)]);
+  lua_pushboolean(L, inputs[_check_controller(L)].pressed & _check_button(L));
   return 1;
 }
 
@@ -700,6 +727,141 @@ static int f_title(lua_State *L) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Compression routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static int f_compress(lua_State *L) {
+  size_t source_size;
+  luaL_Buffer buffer;
+  const char *source = luaL_checklstring(L, 1, &source_size);
+  int dest_size = LZ4_compressBound((int)source_size);
+  char *dest = luaL_buffinitsize(L, &buffer, dest_size);
+  dest_size = LZ4_compress_default(source, dest, (int)source_size, dest_size);
+  if (!dest_size) luaL_error(L, "compression failed");
+  luaL_pushresultsize(&buffer, dest_size);
+  return 1;
+}
+
+static int f_decompress(lua_State *L) {
+  size_t source_size;
+  luaL_Buffer buffer;
+  const char *source = luaL_checklstring(L, 1, &source_size);
+  int dest_size = (int)luaL_optinteger(L, 2, 64 * 1024);
+  char *dest = luaL_buffinitsize(L, &buffer, dest_size);
+  dest_size = LZ4_decompress_safe(source, dest, (int)source_size, dest_size);
+  if (!dest_size) luaL_error(L, "decompression failed");
+  luaL_pushresultsize(&buffer, dest_size);
+  return 1;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Networking routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_create_socket(lua_State *L) {
+  if (socket_fd == INVALID_SOCKET) {
+    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
+  }
+}
+
+static int f_bind(lua_State *L) {
+  struct sockaddr_in sin;
+  Uint16 port = (Uint16)luaL_checkinteger(L, 1);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(INADDR_ANY);
+  // bind socket
+  net_create_socket(L);
+  if (bind(socket_fd, (struct sockaddr*)&sin, sizeof(sin))) luaL_error(L, "Cannot bind on port %d", port);
+  return 0;
+}
+
+static int f_unbind(lua_State *L) {
+  (void)L;
+  if (socket_fd != INVALID_SOCKET) {
+    closesocket(socket_fd);
+    socket_fd = INVALID_SOCKET;
+  }
+  return 0;
+}
+
+static int f_recv(lua_State *L) {
+  struct sockaddr_in sin;
+  int datalen = 1024 * 4;
+  socklen_t sinlen;
+  luaL_Buffer buffer;
+  char *data;
+  struct timeval tv;
+  fd_set set;
+  // check socket for data
+  if (socket_fd == INVALID_SOCKET) return 0;
+  FD_ZERO(&set); FD_SET(socket_fd, &set);
+  tv.tv_sec = 0; tv.tv_usec = 0;
+  if (select(socket_fd + 1, &set, NULL, NULL, &tv) <= 0) return 0;
+  if (!FD_ISSET(socket_fd, &set)) return 0;
+  // reset addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = 0;
+  sin.sin_addr.s_addr = INADDR_ANY;
+  sinlen = sizeof(sin);
+  // receive
+  data = luaL_buffinitsize(L, &buffer, datalen);
+  datalen = recvfrom(socket_fd, data, datalen, 0, (struct sockaddr*)&sin, &sinlen);
+  if (datalen < 0) return 0;
+  luaL_pushresultsize(&buffer, datalen);
+  lua_pushinteger(L, ntohl(sin.sin_addr.s_addr));
+  lua_pushinteger(L, ntohs(sin.sin_port));
+  return 3;
+}
+
+static int f_send(lua_State *L) {
+  struct sockaddr_in sin;
+  size_t datalen;
+  int sent;
+  const char *data = luaL_checklstring(L, 1, &datalen);
+  Uint32 host = (Uint32)luaL_checkinteger(L, 2);
+  Uint16 port = (Uint16)luaL_checkinteger(L, 3);
+  // prepare addr
+  SDL_zero(sin);
+  sin.sin_family = AF_INET;
+  sin.sin_port = htons(port);
+  sin.sin_addr.s_addr = htonl(host);
+  // sned
+  net_create_socket(L);
+  sent = sendto(socket_fd, data, (int)datalen, 0, (struct sockaddr*)&sin, sizeof(sin));
+  lua_pushboolean(L, sent == (int)datalen);
+  return 1;
+}
+
+static int f_resolve(lua_State *L) {
+  struct addrinfo hints, *result;
+  const char *hostname = luaL_checkstring(L, 1);
+  SDL_zero(hints);
+  hints.ai_family = AF_INET;
+  if (getaddrinfo(hostname, NULL, &hints, &result) == 0) {
+    if (result) {
+      lua_pushinteger(L, ntohl(((struct sockaddr_in*)(result->ai_addr))->sin_addr.s_addr));
+      freeaddrinfo(result);
+      return 1;
+    }
+  }
+  lua_pushnil(L);
+  lua_pushfstring(L, "cannot resolve " LUA_QS, hostname);
+  return 2;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Lua Api Mapping
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -731,6 +893,15 @@ static const luaL_Reg px_functions[] = {
   {"random", f_random},
   {"quit", f_quit},
   {"title", f_title},
+  // compression stuff
+  {"compress", f_compress},
+  {"decompress", f_decompress},
+  // network
+  {"bind", f_bind},
+  {"unbind", f_unbind},
+  {"recv", f_recv},
+  {"send", f_send},
+  {"resolve", f_resolve},
   {NULL, NULL}
 };
 
@@ -914,6 +1085,19 @@ static void px_open_controllers(lua_State *L) {
   }
 }
 
+static void px_set_button(int player, int button, int down) {
+  if (player >= 0 && player < PX_NUM_CONTROLLERS) {
+    button = 1 << button;
+    if (down) {
+      inputs[player].down |= button;
+      inputs[player].pressed |= button;
+    }
+    else {
+      inputs[player].down &= ~button;
+    }
+  }
+}
+
 static void px_handle_keys(const SDL_Event *ev) {
   int button;
   // handle special keys
@@ -939,11 +1123,7 @@ static void px_handle_keys(const SDL_Event *ev) {
   case SDLK_SPACE: case SDLK_RETURN: button = PX_BUTTON_START; break;
   default: return;
   }
-  if (ev->type == SDL_KEYDOWN) {
-    inputs[0].down[button] = 1;
-    inputs[0].pressed[button] = 1;
-  }
-  else inputs[0].down[button] = 0;
+  px_set_button(0, button, ev->type == SDL_KEYDOWN);
 }
 
 static void px_handle_mouse(const SDL_Event *ev) {
@@ -953,16 +1133,11 @@ static void px_handle_mouse(const SDL_Event *ev) {
   case SDL_BUTTON_RIGHT: button = PX_BUTTON_B; break;
   default: return;
   }
-  if (ev->type == SDL_MOUSEBUTTONDOWN) {
-    inputs[0].down[button] = 1;
-    inputs[0].pressed[button] = 1;
-  }
-  else inputs[0].down[button] = 0;
+  px_set_button(0, button, ev->type == SDL_MOUSEBUTTONDOWN);
 }
 
 static void px_handle_controller(const SDL_Event *ev) {
   int button;
-  if (ev->cbutton.which < 0 || ev->cbutton.which >= PX_NUM_CONTROLLERS) return;
   switch (ev->cbutton.button) {
   case SDL_CONTROLLER_BUTTON_A: button = PX_BUTTON_A; break;
   case SDL_CONTROLLER_BUTTON_B: button = PX_BUTTON_B; break;
@@ -975,18 +1150,14 @@ static void px_handle_controller(const SDL_Event *ev) {
   case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: button = PX_BUTTON_RIGHT; break;
   default: return;
   }
-  if (ev->type == SDL_CONTROLLERBUTTONDOWN) {
-    inputs[ev->cbutton.which].down[button] = 1;
-    inputs[ev->cbutton.which].pressed[button] = 1;
-  }
-  else inputs[ev->cbutton.which].down[button] = 0;
+  px_set_button(ev->cbutton.which, button, ev->type == SDL_CONTROLLERBUTTONDOWN);
 }
 
 static void px_render_screen(lua_State *L) {
   const SDL_Color *color;
   Uint8 *pixels, *p;
   int x, y, pitch;
-  
+
   // update texture
   if (SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch)) luaL_error(L, "SDL_LockTexture() failed: %s", SDL_GetError());
   for (y = 0; y < PX_SCREEN_HEIGHT; ++y) {
@@ -1033,10 +1204,11 @@ static void px_run_main_loop(lua_State *L) {
     delta_ticks += current_tick - last_tick;
     last_tick = current_tick;
     for (; delta_ticks >= PX_FPS_TICKS; delta_ticks -= PX_FPS_TICKS) {
+      // do update call
       if (lua_getglobal(L, "update") == LUA_TFUNCTION) lua_call(L, 0, 0);
       else lua_pop(L, 1);
       // reset input
-      for (i = 0; i < PX_NUM_CONTROLLERS; ++i) SDL_zero(inputs[0].pressed);
+      for (i = 0; i < PX_NUM_CONTROLLERS; ++i) inputs[i].pressed = 0;
     }
     // render stuff
     px_render_screen(L);
@@ -1051,6 +1223,23 @@ static void px_run_main_loop(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+static void net_initialize(lua_State *L) {
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
+#else
+  (void)L;
+#endif // _WIN32
+  socket_fd = INVALID_SOCKET;
+}
+
+static void net_shutdown() {
+  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
+
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
   int i;
@@ -1063,6 +1252,9 @@ static int px_lua_init(lua_State *L) {
   // check for fullscreen
   if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
   else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
+
+  // init network
+  net_initialize(L);
 
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
@@ -1097,6 +1289,7 @@ static int px_lua_init(lua_State *L) {
   palette = 0;
   SDL_zero(inputs); SDL_zero(translation);
   px_open_controllers(L);
+  px_randomseed(47 * 1024); // reset prng
 
   // load the Lua script
   str = px_check_arg("-file");
@@ -1115,11 +1308,23 @@ static void px_shutdown() {
   if (renderer) SDL_DestroyRenderer(renderer);
   if (window) SDL_DestroyWindow(window);
   SDL_Quit();
+  net_shutdown();
+}
+
+static void px_register_args(lua_State *L, int argc, char **argv) {
+  int i;
+  lua_newtable(L);
+  for (i = 1; i < argc; ++i) {
+    lua_pushstring(L, argv[i]);
+    lua_rawseti(L, -2, i);
+  }
+  lua_setglobal(L, "params");
 }
 
 int main(int argc, char **argv) {
   lua_State *L = luaL_newstate();
   margc = argc; margv = argv;
+  px_register_args(L, argc, argv);
   luaL_openlibs(L);
   luaL_requiref(L, "pixl", px_lua_open, 1);
   lua_getglobal(L, "debug"); lua_getfield(L, -1, "traceback"); lua_remove(L, -2);
@@ -1127,6 +1332,9 @@ int main(int argc, char **argv) {
   if (lua_pcall(L, 0, 0, -2) != LUA_OK) {
     const char *message = luaL_gsub(L, lua_tostring(L, -1), "\t", "  ");
     if (audio_device) SDL_PauseAudioDevice(audio_device, SDL_TRUE);
+    #ifndef _WIN32
+    fprintf(stderr, "=[ PiXL Panic ]=\n%s\n", message);
+    #endif // _WIN32
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PiXL Panic", message, window);
   }
   lua_close(L);

@@ -6,6 +6,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * games can be written with simple Lua commands
 * true retro feeling with small resolution and chiptune sounds / music
 * uses stock Lua 5.3 with all new features like integers and bit operations
+* provides a simple network interface
 
 ## Limitations
 
@@ -13,6 +14,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 * 16 colors with a fixed palette
 * 8x8 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
+* only simple UDP (unreliable networking)
 
 ## Goals
 
@@ -94,6 +96,23 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **random([low[, high]])** Returns 0..1 if no value is given. Returns 1..x when only one parameter was given. Returns low..high when both arguments are given. The function behaves similar to Lua's math.random(). This random number generator should be used when you need reproduceable random values across different platforms. Lua's random functions utilize C rand() which behaves not identical on different platforms.
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
+
+## Compression
+
+The very fast compression/decompression algorithm LZ4 is provided by PiXL. You can use to it to compress data on the fly e.g. for sending it over the network.
+
+* **compress(data)** Returns a LZ4 compressed version of the given string.
+* **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully. If no *length* is given a 64kb buffer is allocated to decompress the given *data*.
+
+## Networking
+
+PiXL provides a very simple networking interface for sending/receiving UDP packets. But beware, that UDP is an unreliable protocol which may drop packets or receive them in a different order.
+
+* **bind(port)** Bind to the given port in order to receive UDP packets on a known port. This is useful for the server part.
+* **unbind()** Unbinds the the UDP socket from the port. It actually closes and recreates the UDP socket.
+* **recv()** Returns *data*, *host*, *port* or nil when there's no packet to receive. *data* is a string containing the payload, *host* is a integer representing the IPv4 address and *port* is an integer containing the source port of the packet.
+* **send(data, host, port)** Sends data to the given *host* and *port*. Host is an integer representing the IPv4 address. You can use the *host* values returned from *recv* and *resolve* here.
+* **resolve(hostname)** Returns an integer representing the resolved IPv4 address of *hostname*.
 
 ## Parameters for PiXL executable
 
