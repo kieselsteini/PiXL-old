@@ -343,7 +343,8 @@ static Uint32 px_rand() {
 
 static void px_randomseed(Uint32 s) {
   int i;
-  for (i = 0, seed = s; i < 1024; ++i) (void)px_rand();
+  seed = s ? s : 47; // prevent 0 as seed
+  for (i = 0; i < 1024; ++i) (void)px_rand();
 }
 
 static int px_check_parm(const char *name) {
