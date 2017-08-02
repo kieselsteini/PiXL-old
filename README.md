@@ -12,7 +12,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 * 256x240 resolution (NES screen size)
 * 16 colors with a fixed palette
-* 8x8 pixel sprites
+* 8x8, 16x16, 32x32 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
 * only simple UDP (unreliable networking)
 
