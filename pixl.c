@@ -740,7 +740,7 @@ static int f_recv(lua_State *L) {
   struct timeval tv;
   fd_set set;
   // check socket for data
-  if (socket_fd == INVALID_SOCKET) return 0;
+  net_create_socket(L);
   FD_ZERO(&set); FD_SET(socket_fd, &set);
   tv.tv_sec = 0; tv.tv_usec = 0;
   if (select(socket_fd + 1, &set, NULL, NULL, &tv) <= 0) return 0;
