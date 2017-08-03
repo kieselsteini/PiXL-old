@@ -83,6 +83,10 @@ typedef int socklen_t;
 // Number of controllers
 #define PX_NUM_CONTROLLERS  8
 
+// Version and Author
+#define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
+#define PX_VERSION          500
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -845,8 +849,8 @@ static const luaL_Reg px_functions[] = {
 
 static int px_lua_open(lua_State *L) {
   luaL_newlib(L, px_functions);
-  lua_pushstring(L, "Sebastian Steinhauer <s.steinhauer@yahoo.de>"); lua_setfield(L, -2, "_author");
-  lua_pushstring(L, "PiXL 1.0"); lua_setfield(L, -2, "_version");
+  lua_pushstring(L, PX_AUTHOR); lua_setfield(L, -2, "_author");
+  lua_pushinteger(L, PX_VERSION); lua_setfield(L, -2, "_version");
   return 1;
 }
 
