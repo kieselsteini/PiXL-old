@@ -87,6 +87,9 @@ typedef int socklen_t;
 #define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
 #define PX_VERSION          500
 
+// WAD lumps
+#define PX_NUM_WAD_LUMPS    256
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -159,6 +162,17 @@ char **margv;
 
 // UDP networking
 int socket_fd;
+
+// WAD files
+typedef struct WADLump {
+  char      name[8];
+  Uint32    offset;
+  Uint32    length;
+  SDL_RWops *ctx;
+} WADLump;
+
+WADLump wad_lumps[PX_NUM_WAD_LUMPS];
+int wad_count;
 
 
 
@@ -361,6 +375,89 @@ static const char *px_check_arg(const char *name) {
   int i = px_check_parm(name);
   if (i && (i + 1) < margc) return margv[i + 1];
   return NULL;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//  WAD File Handling
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void wad_open_archive(lua_State *L, const char *filename, int required) {
+  SDL_RWops *ctx;
+  char magic[4];
+  Uint32 directory_offset;
+  int i, directory_entries;
+
+  if (required && wad_count >= PX_NUM_WAD_LUMPS) luaL_error(L, "Cannot add additional lumps");
+  ctx = SDL_RWFromFile(filename, "rb");
+  if (ctx == NULL) {
+    if (required) luaL_error(L, "Cannot open WAD " LUA_QS, filename);
+    return;
+  }
+  if (SDL_RWread(ctx, magic, 1, 4) != 4) {
+    SDL_RWclose(ctx);
+    luaL_error(L, "Cannot read WAD magic of " LUA_QS, filename);
+  }
+  if (SDL_strcmp(magic, "IWAD") && SDL_strcmp(magic, "PWAD")) {
+    SDL_RWclose(ctx);
+    luaL_error(L, "Invalid WAD magic of " LUA_QS, filename);
+  }
+  directory_entries = (int)SDL_ReadLE32(ctx);
+  directory_offset = SDL_ReadLE32(ctx);
+  if (SDL_RWseek(ctx, directory_offset, RW_SEEK_SET) != directory_offset) {
+    SDL_RWclose(ctx);
+    luaL_error(L, "Cannot seek to WAD directory of " LUA_QS, filename);
+  }
+  for (i = 0; i < directory_entries && wad_count < PX_NUM_WAD_LUMPS; ++i, ++wad_count) {
+    wad_lumps[wad_count].ctx = ctx;
+    wad_lumps[wad_count].offset = SDL_ReadLE32(ctx);
+    wad_lumps[wad_count].length = SDL_ReadLE32(ctx);
+    if (SDL_RWread(ctx, &wad_lumps[wad_count], 1, 8) != 8) luaL_error(L, "Cannot read WAD entry of " LUA_QS, filename);
+  }
+}
+
+static void wad_open_archives(lua_State *L) {
+  char filename[64];
+  int i;
+  for (i = 0, wad_count = 0; i < 10; ++i) {
+    SDL_snprintf(filename, sizeof(filename), "data%d.wad", i);
+    wad_open_archive(L, filename, SDL_FALSE);
+  }
+}
+
+static void wad_open_file(lua_State *L, const char *filename) {
+  SDL_RWops *ctx;
+  Uint32 length;
+  luaL_Buffer buffer;
+  char *data, name[9];
+
+  if ((ctx = SDL_RWFromFile(filename, "rb")) != NULL) {
+    Sint64 l = SDL_RWsize(ctx);
+    if (l < 0) luaL_error(L, "Cannot determine size of file " LUA_QS, filename);
+    length = (Uint32)l;
+    SDL_zero(name);
+  }
+  else {
+    int i;
+    for (i = 0; i < 8 && filename[i] && filename[i] != '.'; ++i) name[i] = SDL_toupper(filename[i]);
+    for (; i < 9; ++i) name[i] = 0;
+    for (i = wad_count - 1; i >= 0; --i) {
+      if (!SDL_memcmp(name, wad_lumps[i].name, 8)) {
+        ctx = wad_lumps[i].ctx;
+        if (SDL_RWseek(ctx, wad_lumps[i].offset, RW_SEEK_SET) != wad_lumps[i].offset) {
+          luaL_error(L, "Cannot seek to " LUA_QS, name);
+        }
+        break;
+      }
+    }
+    if (!ctx) luaL_error(L, "Cannot open file " LUA_QS " or " LUA_QS, filename, name);
+  }
+  data = luaL_buffinitsize(L, &buffer, length);
+  if (SDL_RWread(ctx, data, 1, length) != length) luaL_error(L, "Cannot read file contents " LUA_QS " or " LUA_QS, filename, name);
+  luaL_pushresultsize(&buffer, length);
 }
 
 
@@ -666,6 +763,12 @@ static int f_title(lua_State *L) {
   return 0;
 }
 
+static int f_loadfile(lua_State *L) {
+  const char *filename = luaL_checkstring(L, 1);
+  wad_open_file(L, filename);
+  return 1;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -835,6 +938,7 @@ static const luaL_Reg px_functions[] = {
   {"random", f_random},
   {"quit", f_quit},
   {"title", f_title},
+  {"loadfile", f_loadfile},
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
@@ -1232,10 +1336,18 @@ static int px_lua_init(lua_State *L) {
   px_open_controllers(L);
   px_randomseed(47 * 1024); // reset prng
 
+  // open wad archives
+  wad_open_archives(L);
+  str = px_check_arg("-wad");
+  if (str) wad_open_archive(L, str, SDL_TRUE);
+
   // load the Lua script
   str = px_check_arg("-file");
   if (!str) str = "game.lua";
-  if (luaL_loadfile(L, str)) lua_error(L);
+  wad_open_file(L, str);
+  lua_pushfstring(L, "@%s", str);
+  if (luaL_loadbuffer(L, lua_tostring(L, -2), (size_t)luaL_len(L, -2), lua_tostring(L, -1)) != LUA_OK) lua_error(L);
+  lua_remove(L, -2);
   lua_call(L, 0, 0);
 
   // run main loop
