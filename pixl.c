@@ -430,7 +430,7 @@ static void wad_open_archives(lua_State *L) {
 
 static void wad_open_file(lua_State *L, const char *filename) {
   SDL_RWops *ctx;
-  Uint32 length;
+  Uint32 length = 0;
   luaL_Buffer buffer;
   char *data, name[9];
 
