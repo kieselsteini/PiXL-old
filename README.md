@@ -12,7 +12,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 * 256x240 resolution (NES screen size)
 * 16 colors with a fixed palette
-* 8x8, 16x16, 32x32 pixel sprites
+* 8x8, 16x16, 32x32, 16x24 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
 * only simple UDP (unreliable networking)
 
@@ -42,6 +42,7 @@ The following functions must be defined as global functions and will be called b
 * **line(color, x0, y0, x1, y1)** Draws a single pixel line from *x0*, *y0* to *x1*, *y1*.
 * **circle(color, x, y, radius[, fill)** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
 * **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values. Please note, that the mouse X, Y values will be translated as well.
+* **palette(name)** Select one of following palettes ("pixl", "c64", "cga", "16pal").
 
 ## Highlevel Drawing
 

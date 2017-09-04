@@ -492,19 +492,20 @@ static int f_translate(lua_State *L) {
 static int f_sprite(lua_State *L) {
   size_t length;
   Uint8 color;
-  int x, y, size;
+  int x, y, w, h;
   int x0 = (int)luaL_checknumber(L, 1);
   int y0 = (int)luaL_checknumber(L, 2);
   const char *data = luaL_checklstring(L, 3, &length);
   int transparent = (int)luaL_optinteger(L, 4, -1);
   switch (length) {
-  case 64: size = 8; break;
-  case 256: size = 16; break;
-  case 1024: size = 32; break;
+  case 64: w = h = 8; break;
+  case 256: w = h = 16; break;
+  case 1024: w = h = 32; break;
+  case 384: w = 16; h = 24; break;
   default: return luaL_argerror(L, 3, "invalid sprite data length");
   }
-  for (y = y0; y < y0 + size; ++y) {
-    for (x = x0; x < x0 + size; ++x) {
+  for (y = y0; y < y0 + h; ++y) {
+    for (x = x0; x < x0 + w; ++x) {
       color = sprite_color_map[(*data++) & 127];
       if (color != transparent) _pixel(color, x, y);
     }
