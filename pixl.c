@@ -1231,6 +1231,8 @@ static int px_lua_init(lua_State *L) {
     want.samples = 1024 * 4;
     str = px_check_arg("-audio");
     audio_device = SDL_OpenAudioDevice(str, SDL_FALSE, &want, &have, 0);
+    if (have.format != AUDIO_S8) luaL_error(L, "SDL_OpenAudioDevice() didn't provide AUDIO_S8 format");
+    if (have.channels != 1) luaL_error(L, "SDL_OpenAudioDevice() didn't provide a mono channel");
     if (!audio_device) luaL_error(L, "SDL_OpenAudioDevice() failed: %s", SDL_GetError());
     mixing_frequency = (float)have.freq;
     SDL_PauseAudioDevice(audio_device, SDL_FALSE);
