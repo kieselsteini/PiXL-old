@@ -96,6 +96,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **random([low[, high]])** Returns 0..1 if no value is given. Returns 1..x when only one parameter was given. Returns low..high when both arguments are given. The function behaves similar to Lua's math.random(). This random number generator should be used when you need reproduceable random values across different platforms. Lua's random functions utilize C rand() which behaves not identical on different platforms.
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
+* **time()** Returns the time since start in seconds.
 
 ## Compression
 

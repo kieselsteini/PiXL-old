@@ -85,7 +85,7 @@ typedef int socklen_t;
 
 // Version and Author
 #define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
-#define PX_VERSION          500
+#define PX_VERSION          510
 
 
 
@@ -668,6 +668,12 @@ static int f_title(lua_State *L) {
   return 0;
 }
 
+static int f_time(lua_State *L) {
+  Uint32 ticks = SDL_GetTicks();
+  lua_pushnumber(L, (lua_Number)ticks / 1000.0);
+  return 1;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -832,6 +838,7 @@ static const luaL_Reg px_functions[] = {
   {"random", f_random},
   {"quit", f_quit},
   {"title", f_title},
+  {"time", f_time},
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
