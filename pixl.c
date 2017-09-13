@@ -64,12 +64,10 @@ typedef int socklen_t;
 // NES screen resolution + scaling
 #define PX_SCREEN_WIDTH     256
 #define PX_SCREEN_HEIGHT    240
-#define PX_SCREEN_SCALE     3
 
-// Window size (calculated) and title
-#define PX_WINDOW_WIDTH     (PX_SCREEN_WIDTH * PX_SCREEN_SCALE)
-#define PX_WINDOW_HEIGHT    (PX_SCREEN_HEIGHT * PX_SCREEN_SCALE)
+// Window title
 #define PX_WINDOW_TITLE     "PiXL Window"
+#define PX_WINDOW_PADDING   32
 
 // Audio settings
 #define PX_AUDIO_CHANNELS   8
@@ -1203,23 +1201,39 @@ static void px_run_main_loop(lua_State *L) {
 
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
-  int i;
+  int i, flags, w, h;
   const char *str;
+  SDL_DisplayMode display_mode;
 
   // setup some hints
   str = px_check_arg("-video");
   if (str) SDL_SetHint(SDL_HINT_RENDER_DRIVER, str);
 
   // check for fullscreen
-  if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
-  else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
+  if (px_check_parm("-window")) { fullscreen = SDL_FALSE; flags = SDL_WINDOW_RESIZABLE; }
+  else { fullscreen = SDL_TRUE; flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
 
   // init network
   net_initialize(L);
 
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
-  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_WINDOW_WIDTH, PX_WINDOW_HEIGHT, i);
+
+  // determine the best window size
+  if (SDL_GetDesktopDisplayMode(0, &display_mode)) luaL_error(L, "SDL_GetDesktopDisplayMode() failed: %s", SDL_GetError());
+  w = (display_mode.w - PX_WINDOW_PADDING) / PX_SCREEN_WIDTH;
+  h = (display_mode.h - PX_WINDOW_PADDING) / PX_SCREEN_HEIGHT;
+  if (w < h) {
+    h = PX_SCREEN_HEIGHT * w;
+    w = PX_SCREEN_WIDTH * w;
+  }
+  else {
+    w = PX_SCREEN_WIDTH * h;
+    h = PX_SCREEN_HEIGHT * h;
+  }
+
+  // create window + texture
+  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, flags);
   if (!window) luaL_error(L, "SDL_CreateWindow() failed: %s", SDL_GetError());
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!renderer) luaL_error(L, "SDL_CreateRenderer() failed: %s", SDL_GetError());
