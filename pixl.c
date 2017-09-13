@@ -83,7 +83,7 @@ typedef int socklen_t;
 
 // Version and Author
 #define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
-#define PX_VERSION          510
+#define PX_VERSION          520
 
 
 
