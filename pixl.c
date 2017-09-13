@@ -334,7 +334,7 @@ static const Uint8 font8x8[128][8] = {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-//  Randomizer
+//  Randomizer + some helper routines
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -622,7 +622,8 @@ static int f_clipboard(lua_State *L) {
   if (lua_gettop(L) > 0) {
     const char *text = luaL_checkstring(L, 1);
     if (SDL_SetClipboardText(text)) luaL_error(L, "SDL_SetClipboardText() failed: %s", SDL_GetError());
-    return 0;
+    lua_pushstring(L, text);
+    return 1;
   }
   else {
     lua_pushstring(L, SDL_GetClipboardText());
@@ -706,12 +707,7 @@ static int f_decompress(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static void net_create_socket(lua_State *L) {
-  if (socket_fd == INVALID_SOCKET) {
-    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
-  }
-}
+static void net_create_socket(lua_State *L);
 
 static int f_bind(lua_State *L) {
   struct sockaddr_in sin;
@@ -1013,6 +1009,38 @@ static void px_audio_mixer_callback(void *userdata, Uint8 *stream, int len) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Network helper routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_initialize(lua_State *L) {
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
+#else
+  (void)L;
+#endif // _WIN32
+  socket_fd = INVALID_SOCKET;
+}
+
+static void net_shutdown() {
+  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
+
+static void net_create_socket(lua_State *L) {
+  if (socket_fd == INVALID_SOCKET) {
+    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
+  }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Main Loop and Events
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -1166,23 +1194,6 @@ static void px_run_main_loop(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static void net_initialize(lua_State *L) {
-#ifdef _WIN32
-  WSADATA wsa;
-  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
-#else
-  (void)L;
-#endif // _WIN32
-  socket_fd = INVALID_SOCKET;
-}
-
-static void net_shutdown() {
-  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
-#ifdef _WIN32
-  WSACleanup();
-#endif // _WIN32
-}
-
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
   int i;
@@ -1235,8 +1246,7 @@ static int px_lua_init(lua_State *L) {
 
   // load the Lua script
   str = px_check_arg("-file");
-  if (!str) str = "game.lua";
-  if (luaL_loadfile(L, str)) lua_error(L);
+  if (luaL_loadfile(L, str ? str : "game.lua")) lua_error(L);
   lua_call(L, 0, 0);
 
   // run main loop
