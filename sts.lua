@@ -1,6 +1,6 @@
 --[[----------------------------------------------------------------------------
 
-      sts - a object of Lua helper routines
+      sts - a module of Lua helper routines
 
   MIT License
 
@@ -30,6 +30,7 @@ local M = {}
 
 -- local often used functions for speed
 local pairs = pairs
+local type = type
 local setmetatable = setmetatable
 
 --------------------------------------------------------------------------------
