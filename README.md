@@ -26,7 +26,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details.
 
-## Callbacks
+### Callbacks
 
 The following functions must be defined as global functions and will be called by PiXL.
 
