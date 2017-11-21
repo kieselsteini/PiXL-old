@@ -10,7 +10,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 ## Limitations
 
-* 256x240 resolution (NES screen size)
+* software rendered screen (max resolution of 1024x1024)
 * 16 colors with a fixed palette
 * 8x8, 16x16, 32x32, 16x24 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
@@ -24,7 +24,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 ## Documentation
 
-On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details.
+On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details. The initial resolution of the screen will be 256x240 pixels (NES/SNES screen size).
 
 ### Callbacks
 
@@ -96,6 +96,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
 * **time()** Returns the time since start in seconds.
+* **resolution(width, height)** Sets the resolution of the screen. This function is very heavy on CPU and should be used only on startup or when the game really needs a shift in resolution (e.g. going from main menu to gameplay).
 
 ### Compression
 

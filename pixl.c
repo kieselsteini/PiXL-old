@@ -62,28 +62,28 @@ typedef int socklen_t;
 ////////////////////////////////////////////////////////////////////////////////
 
 // NES screen resolution + scaling
-#define PX_SCREEN_WIDTH     256
-#define PX_SCREEN_HEIGHT    240
+#define PX_SCREEN_MAX_WIDTH   1024
+#define PX_SCREEN_MAX_HEIGHT  1024
 
 // Window title
-#define PX_WINDOW_TITLE     "PiXL Window"
-#define PX_WINDOW_PADDING   32
+#define PX_WINDOW_TITLE       "PiXL Window"
+#define PX_WINDOW_PADDING     32
 
 // Audio settings
-#define PX_AUDIO_CHANNELS   8
-#define PX_AUDIO_FREQUENCY  44100
-#define PX_AUDIO_NOISE      1024
+#define PX_AUDIO_CHANNELS     8
+#define PX_AUDIO_FREQUENCY    44100
+#define PX_AUDIO_NOISE        1024
 
 // Frame time
-#define PX_FPS              30
-#define PX_FPS_TICKS        (1000 / PX_FPS)
+#define PX_FPS                30
+#define PX_FPS_TICKS          (1000 / PX_FPS)
 
 // Number of controllers
-#define PX_NUM_CONTROLLERS  8
+#define PX_NUM_CONTROLLERS    8
 
 // Version and Author
-#define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
-#define PX_VERSION          520
+#define PX_AUTHOR             "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
+#define PX_VERSION            520
 
 
 
@@ -100,8 +100,9 @@ SDL_Texture *texture = NULL;
 SDL_AudioDeviceID audio_device = 0;
 
 // Screen
-Uint8 screen[PX_SCREEN_WIDTH][PX_SCREEN_HEIGHT];
+Uint8 screen[PX_SCREEN_MAX_WIDTH][PX_SCREEN_MAX_HEIGHT];
 SDL_Point translation;
+int screen_width, screen_height;
 
 // Audio
 enum {
@@ -374,7 +375,7 @@ static const char *px_check_arg(const char *name) {
 static void _pixel(Uint8 color, int x0, int y0) {
   int x = x0 + translation.x;
   int y = y0 + translation.y;
-  if (x >= 0 && x < PX_SCREEN_WIDTH && y >= 0 && y < PX_SCREEN_HEIGHT) screen[x][y] = color;
+  if (x >= 0 && x < screen_width && y >= 0 && y < screen_height) screen[x][y] = color;
 }
 
 static int f_clear(lua_State *L) {
@@ -672,6 +673,17 @@ static int f_time(lua_State *L) {
   return 1;
 }
 
+static void px_create_texture(lua_State *L, int width, int height);
+
+static int f_resolution(lua_State *L) {
+  int width = (int)luaL_checkinteger(L, 1);
+  int height = (int)luaL_checkinteger(L, 2);
+  luaL_argcheck(L, width > 0 && width < PX_SCREEN_MAX_WIDTH, 1, "invalid width value");
+  luaL_argcheck(L, height > 0 && height < PX_SCREEN_MAX_HEIGHT, 2, "invalid height value");
+  px_create_texture(L, width, height);
+  return 0;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -837,6 +849,7 @@ static const luaL_Reg px_functions[] = {
   {"quit", f_quit},
   {"title", f_title},
   {"time", f_time},
+  {"resolution", f_resolution},
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
@@ -1079,11 +1092,14 @@ static void px_handle_keys(const SDL_Event *ev) {
   // handle special keys
   if (ev->type == SDL_KEYDOWN) {
     switch (ev->key.keysym.sym) {
-    case SDLK_ESCAPE: running = SDL_FALSE; break;
+    case SDLK_ESCAPE:
+      running = SDL_FALSE;
+      return;
     case SDLK_F12:
       fullscreen = !fullscreen;
       SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-      break;
+      if (!fullscreen) SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+      return;
     }
   }
   // handle normal keys
@@ -1134,11 +1150,18 @@ static void px_render_screen(lua_State *L) {
   Uint8 *pixels, *p;
   int x, y, pitch;
 
+  // check if we really have a texture
+  if (texture == NULL) {
+    if (SDL_SetRenderDrawColor(renderer, 64, 16, 16, 255)) luaL_error(L, "SDL_SetRenderDrawColor() failed: %s", SDL_GetError());
+    if (SDL_RenderClear(renderer)) luaL_error(L, "SDL_RenderClear() failed: %s", SDL_GetError());
+    return;
+  }
+
   // update texture
   if (SDL_LockTexture(texture, NULL, (void**)&pixels, &pitch)) luaL_error(L, "SDL_LockTexture() failed: %s", SDL_GetError());
-  for (y = 0; y < PX_SCREEN_HEIGHT; ++y) {
+  for (y = 0; y < screen_height; ++y) {
     p = pixels + pitch * y;
-    for (x = 0; x < PX_SCREEN_WIDTH; ++x) {
+    for (x = 0; x < screen_width; ++x) {
       color = &colors[screen[x][y] & 15];
       *p++ = 255; *p++ = color->b; *p++ = color->g; *p++ = color->r;
     }
@@ -1199,11 +1222,36 @@ static void px_run_main_loop(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+static void px_create_texture(lua_State *L, int width, int height) {
+  SDL_DisplayMode display_mode;
+
+  // create new texture
+  if (texture) SDL_DestroyTexture(texture);
+  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+  if (!texture) luaL_error(L, "SDL_CreateTexture() failed: %s", SDL_GetError());
+  if (SDL_RenderSetLogicalSize(renderer, width, height)) luaL_error(L, "SDL_RenderSetLogicalSize() failed: %s", SDL_GetError());
+  screen_width = width; screen_height = height;
+
+  // determine the best window size and center it
+  if (SDL_GetDesktopDisplayMode(0, &display_mode)) luaL_error(L, "SDL_GetDesktopDisplayMode() failed: %s", SDL_GetError());
+  width = (display_mode.w - PX_WINDOW_PADDING) / screen_width;
+  height = (display_mode.h - PX_WINDOW_PADDING) / screen_height;
+  if (width < height) {
+    height = screen_height * width;
+    width = screen_width * width;
+  } 
+  else {
+    width = screen_width * height;
+    height = screen_height * height;
+  }
+  SDL_SetWindowSize(window, width, height);
+  SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
-  int i, flags, w, h;
+  int i, flags;
   const char *str;
-  SDL_DisplayMode display_mode;
 
   // setup some hints
   str = px_check_arg("-video");
@@ -1219,27 +1267,12 @@ static int px_lua_init(lua_State *L) {
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
 
-  // determine the best window size
-  if (SDL_GetDesktopDisplayMode(0, &display_mode)) luaL_error(L, "SDL_GetDesktopDisplayMode() failed: %s", SDL_GetError());
-  w = (display_mode.w - PX_WINDOW_PADDING) / PX_SCREEN_WIDTH;
-  h = (display_mode.h - PX_WINDOW_PADDING) / PX_SCREEN_HEIGHT;
-  if (w < h) {
-    h = PX_SCREEN_HEIGHT * w;
-    w = PX_SCREEN_WIDTH * w;
-  }
-  else {
-    w = PX_SCREEN_WIDTH * h;
-    h = PX_SCREEN_HEIGHT * h;
-  }
-
   // create window + texture
-  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, flags);
+  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256 * 2, 240 * 2, flags);
   if (!window) luaL_error(L, "SDL_CreateWindow() failed: %s", SDL_GetError());
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!renderer) luaL_error(L, "SDL_CreateRenderer() failed: %s", SDL_GetError());
-  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, PX_SCREEN_WIDTH, PX_SCREEN_HEIGHT);
-  if (!texture) luaL_error(L, "SDL_CreateTexture() failed: %s", SDL_GetError());
-  if (SDL_RenderSetLogicalSize(renderer, PX_SCREEN_WIDTH, PX_SCREEN_HEIGHT)) luaL_error(L, "SDL_RenderSetLogicalSize() failed: %s", SDL_GetError());
+  px_create_texture(L, 256, 240);
   SDL_ShowCursor(0);
 
   // audio init
