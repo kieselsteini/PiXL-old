@@ -43,15 +43,15 @@ The following functions must be defined as global functions and will be called b
 * **circle(color, x, y, radius[, fill])** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
 * **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values. Please note, that the mouse X, Y values will be translated as well.
 
-## Highlevel Drawing
+### Highlevel Drawing
 
-Sprites are represented as 64 character strings. Every character represents one pixel in the sprite. The colors are hexadecimal encoded (0-9, a-f, A-F).
+Sprites are represented as strings. Every character represents one pixel in the sprite. The colors are hexadecimal encoded (0-9, a-f, A-F).
 Other characters will be interpreted as color 0.
 
 * **sprite(x, y, data[, transparent])** Draws the given sprite string on *x*, *y*. If *transparent* color is given, this color will be not drawn.
-* **print(color, x, y, string)** Prints the given *string* to *x*, *y* on screen.
+* **print(color, x, y, string)** Prints the given *string* to *x*, *y* on screen. The font uses 8x8 pixel monospaced glyphs.
 
-## Audio (MML) Routines
+### Audio (MML) Routines
 
 To create sounds PiXL uses a MML (Music Macro Language) to represent the song/sound effect to played. There are 8 channels (0-7) available for playback.
 MML syntax:
@@ -80,7 +80,7 @@ Lua functions:
 * **stop(channel)** Stops the audio generation on the given *channel*.
 * **pause(paused)** Stops the entire audio mixing if *paused* is *true*. This is could be useful if you want to setup a song to be played on multiple channels.
 
-## Input
+### Input
 
 You can use up to 8 controllers for PiXL. The buttons available for checking are *A*,*B*,*X*,*Y*,*LEFT*,*RIGHT*,*UP*,*DOWN* and *START*.
 
@@ -88,7 +88,7 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **btnp(button[, player])** Returns true if the given *button* for *player* was pressed since the last frame. This can be used to check inputs for menus.
 * **mouse()** Returns the mouse position.
 
-## Misc Functions
+### Misc Functions
 
 * **clipboard([text])** If *text* is given, the text will be set to the clipboard. The function will return the current clipboard content.
 * **randomseed([seed])** If *seed* is given the random seed is set to the value. Returns the current random seed value.
@@ -97,14 +97,14 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **title(title)** Sets the title of the window.
 * **time()** Returns the time since start in seconds.
 
-## Compression
+### Compression
 
 The very fast compression/decompression algorithm LZ4 is provided by PiXL. You can use to it to compress data on the fly e.g. for sending it over the network.
 
 * **compress(data)** Returns a LZ4 compressed version of the given string.
 * **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully. If no *length* is given a 64kb buffer is allocated to decompress the given *data*.
 
-## Networking
+### Networking
 
 PiXL provides a very simple networking interface for sending/receiving UDP packets. But beware, that UDP is an unreliable protocol which may drop packets or receive them in a different order.
 
