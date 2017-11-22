@@ -64,12 +64,10 @@ typedef int socklen_t;
 // NES screen resolution + scaling
 #define PX_SCREEN_WIDTH     256
 #define PX_SCREEN_HEIGHT    240
-#define PX_SCREEN_SCALE     3
 
-// Window size (calculated) and title
-#define PX_WINDOW_WIDTH     (PX_SCREEN_WIDTH * PX_SCREEN_SCALE)
-#define PX_WINDOW_HEIGHT    (PX_SCREEN_HEIGHT * PX_SCREEN_SCALE)
+// Window title
 #define PX_WINDOW_TITLE     "PiXL Window"
+#define PX_WINDOW_PADDING   32
 
 // Audio settings
 #define PX_AUDIO_CHANNELS   8
@@ -85,7 +83,7 @@ typedef int socklen_t;
 
 // Version and Author
 #define PX_AUTHOR           "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
-#define PX_VERSION          500
+#define PX_VERSION          520
 
 // WAD lumps
 #define PX_NUM_WAD_LUMPS    256
@@ -348,7 +346,7 @@ static const Uint8 font8x8[128][8] = {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-//  Randomizer
+//  Randomizer + some helper routines
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -589,19 +587,20 @@ static int f_translate(lua_State *L) {
 static int f_sprite(lua_State *L) {
   size_t length;
   Uint8 color;
-  int x, y, size;
+  int x, y, w, h;
   int x0 = (int)luaL_checknumber(L, 1);
   int y0 = (int)luaL_checknumber(L, 2);
   const char *data = luaL_checklstring(L, 3, &length);
   int transparent = (int)luaL_optinteger(L, 4, -1);
   switch (length) {
-  case 64: size = 8; break;
-  case 256: size = 16; break;
-  case 1024: size = 32; break;
+  case 64: w = h = 8; break;
+  case 256: w = h = 16; break;
+  case 1024: w = h = 32; break;
+  case 384: w = 16; h = 24; break;
   default: return luaL_argerror(L, 3, "invalid sprite data length");
   }
-  for (y = y0; y < y0 + size; ++y) {
-    for (x = x0; x < x0 + size; ++x) {
+  for (y = y0; y < y0 + h; ++y) {
+    for (x = x0; x < x0 + w; ++x) {
       color = sprite_color_map[(*data++) & 127];
       if (color != transparent) _pixel(color, x, y);
     }
@@ -718,7 +717,8 @@ static int f_clipboard(lua_State *L) {
   if (lua_gettop(L) > 0) {
     const char *text = luaL_checkstring(L, 1);
     if (SDL_SetClipboardText(text)) luaL_error(L, "SDL_SetClipboardText() failed: %s", SDL_GetError());
-    return 0;
+    lua_pushstring(L, text);
+    return 1;
   }
   else {
     lua_pushstring(L, SDL_GetClipboardText());
@@ -766,6 +766,11 @@ static int f_title(lua_State *L) {
 static int f_loadfile(lua_State *L) {
   const char *filename = luaL_checkstring(L, 1);
   wad_open_file(L, filename);
+}
+
+static int f_time(lua_State *L) {
+  Uint32 ticks = SDL_GetTicks();
+  lua_pushnumber(L, (lua_Number)ticks / 1000.0);
   return 1;
 }
 
@@ -808,12 +813,7 @@ static int f_decompress(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static void net_create_socket(lua_State *L) {
-  if (socket_fd == INVALID_SOCKET) {
-    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
-  }
-}
+static void net_create_socket(lua_State *L);
 
 static int f_bind(lua_State *L) {
   struct sockaddr_in sin;
@@ -939,6 +939,7 @@ static const luaL_Reg px_functions[] = {
   {"quit", f_quit},
   {"title", f_title},
   {"loadfile", f_loadfile},
+  {"time", f_time},
   // compression stuff
   {"compress", f_compress},
   {"decompress", f_decompress},
@@ -1116,6 +1117,38 @@ static void px_audio_mixer_callback(void *userdata, Uint8 *stream, int len) {
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//  Network helper routines
+//
+////////////////////////////////////////////////////////////////////////////////
+
+static void net_initialize(lua_State *L) {
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
+#else
+  (void)L;
+#endif // _WIN32
+  socket_fd = INVALID_SOCKET;
+}
+
+static void net_shutdown() {
+  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
+#ifdef _WIN32
+  WSACleanup();
+#endif // _WIN32
+}
+
+static void net_create_socket(lua_State *L) {
+  if (socket_fd == INVALID_SOCKET) {
+    socket_fd = (int)socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (socket_fd == INVALID_SOCKET) luaL_error(L, "Cannot create UDP socket");
+  }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //  Main Loop and Events
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -1269,42 +1302,41 @@ static void px_run_main_loop(lua_State *L) {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-static void net_initialize(lua_State *L) {
-#ifdef _WIN32
-  WSADATA wsa;
-  if (WSAStartup(MAKEWORD(2, 2), &wsa)) luaL_error(L, "Windows sockets could not start");
-#else
-  (void)L;
-#endif // _WIN32
-  socket_fd = INVALID_SOCKET;
-}
-
-static void net_shutdown() {
-  if (socket_fd != INVALID_SOCKET) closesocket(socket_fd);
-#ifdef _WIN32
-  WSACleanup();
-#endif // _WIN32
-}
-
 static int px_lua_init(lua_State *L) {
   SDL_AudioSpec want, have;
-  int i;
+  int i, flags, w, h;
   const char *str;
+  SDL_DisplayMode display_mode;
 
   // setup some hints
   str = px_check_arg("-video");
   if (str) SDL_SetHint(SDL_HINT_RENDER_DRIVER, str);
 
   // check for fullscreen
-  if (px_check_parm("-window")) { fullscreen = SDL_FALSE; i = SDL_WINDOW_RESIZABLE; }
-  else { fullscreen = SDL_TRUE; i = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
+  if (px_check_parm("-window")) { fullscreen = SDL_FALSE; flags = SDL_WINDOW_RESIZABLE; }
+  else { fullscreen = SDL_TRUE; flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP; }
 
   // init network
   net_initialize(L);
 
   // init SDL
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
-  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_WINDOW_WIDTH, PX_WINDOW_HEIGHT, i);
+
+  // determine the best window size
+  if (SDL_GetDesktopDisplayMode(0, &display_mode)) luaL_error(L, "SDL_GetDesktopDisplayMode() failed: %s", SDL_GetError());
+  w = (display_mode.w - PX_WINDOW_PADDING) / PX_SCREEN_WIDTH;
+  h = (display_mode.h - PX_WINDOW_PADDING) / PX_SCREEN_HEIGHT;
+  if (w < h) {
+    h = PX_SCREEN_HEIGHT * w;
+    w = PX_SCREEN_WIDTH * w;
+  }
+  else {
+    w = PX_SCREEN_WIDTH * h;
+    h = PX_SCREEN_HEIGHT * h;
+  }
+
+  // create window + texture
+  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h, flags);
   if (!window) luaL_error(L, "SDL_CreateWindow() failed: %s", SDL_GetError());
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!renderer) luaL_error(L, "SDL_CreateRenderer() failed: %s", SDL_GetError());
@@ -1323,6 +1355,8 @@ static int px_lua_init(lua_State *L) {
     want.samples = 1024 * 4;
     str = px_check_arg("-audio");
     audio_device = SDL_OpenAudioDevice(str, SDL_FALSE, &want, &have, 0);
+    if (have.format != AUDIO_S8) luaL_error(L, "SDL_OpenAudioDevice() didn't provide AUDIO_S8 format");
+    if (have.channels != 1) luaL_error(L, "SDL_OpenAudioDevice() didn't provide a mono channel");
     if (!audio_device) luaL_error(L, "SDL_OpenAudioDevice() failed: %s", SDL_GetError());
     mixing_frequency = (float)have.freq;
     SDL_PauseAudioDevice(audio_device, SDL_FALSE);

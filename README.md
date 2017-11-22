@@ -12,7 +12,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 * 256x240 resolution (NES screen size)
 * 16 colors with a fixed palette
-* 8x8, 16x16, 32x32 pixel sprites
+* 8x8, 16x16, 32x32, 16x24 pixel sprites
 * 8 audio channels with different waveform generators (square, triangle, sawtooth and noise)
 * only simple UDP (unreliable networking)
 
@@ -26,7 +26,7 @@ This is a very tiny Lua based game engine for creating Pixel / Chiptune games. I
 
 On start PiXL will load and execute the file "game.lua". This behaviour can be overwritten with the **-file** parameter. See "Parameter" section below for more details.
 
-## Callbacks
+### Callbacks
 
 The following functions must be defined as global functions and will be called by PiXL.
 
@@ -40,18 +40,18 @@ The following functions must be defined as global functions and will be called b
 * **fill(color, x0, y0, x1, y1)** Fills a portion of the screen with the given color.
 * **rect(color, x0, y0, x1, y1)** Draws a single pixel width rectangle on the screen.
 * **line(color, x0, y0, x1, y1)** Draws a single pixel line from *x0*, *y0* to *x1*, *y1*.
-* **circle(color, x, y, radius[, fill)** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
+* **circle(color, x, y, radius[, fill])** Draws a circle on the screen. If *fill* is set to *true* the circle will be filled.
 * **translate([x, y])** Sets the translation for all pixels drawn. Returns the current translation values. Please note, that the mouse X, Y values will be translated as well.
 
-## Highlevel Drawing
+### Highlevel Drawing
 
-Sprites are represented as 64 character strings. Every character represents one pixel in the sprite. The colors are hexadecimal encoded (0-9, a-f, A-F).
+Sprites are represented as strings. Every character represents one pixel in the sprite. The colors are hexadecimal encoded (0-9, a-f, A-F).
 Other characters will be interpreted as color 0.
 
 * **sprite(x, y, data[, transparent])** Draws the given sprite string on *x*, *y*. If *transparent* color is given, this color will be not drawn.
-* **print(color, x, y, string)** Prints the given *string* to *x*, *y* on screen.
+* **print(color, x, y, string)** Prints the given *string* to *x*, *y* on screen. The font uses 8x8 pixel monospaced glyphs.
 
-## Audio (MML) Routines
+### Audio (MML) Routines
 
 To create sounds PiXL uses a MML (Music Macro Language) to represent the song/sound effect to played. There are 8 channels (0-7) available for playback.
 MML syntax:
@@ -80,7 +80,7 @@ Lua functions:
 * **stop(channel)** Stops the audio generation on the given *channel*.
 * **pause(paused)** Stops the entire audio mixing if *paused* is *true*. This is could be useful if you want to setup a song to be played on multiple channels.
 
-## Input
+### Input
 
 You can use up to 8 controllers for PiXL. The buttons available for checking are *A*,*B*,*X*,*Y*,*LEFT*,*RIGHT*,*UP*,*DOWN* and *START*.
 
@@ -88,22 +88,23 @@ You can use up to 8 controllers for PiXL. The buttons available for checking are
 * **btnp(button[, player])** Returns true if the given *button* for *player* was pressed since the last frame. This can be used to check inputs for menus.
 * **mouse()** Returns the mouse position.
 
-## Misc Functions
+### Misc Functions
 
 * **clipboard([text])** If *text* is given, the text will be set to the clipboard. The function will return the current clipboard content.
 * **randomseed([seed])** If *seed* is given the random seed is set to the value. Returns the current random seed value.
 * **random([low[, high]])** Returns 0..1 if no value is given. Returns 1..x when only one parameter was given. Returns low..high when both arguments are given. The function behaves similar to Lua's math.random(). This random number generator should be used when you need reproduceable random values across different platforms. Lua's random functions utilize C rand() which behaves not identical on different platforms.
 * **quit()** Quits the game's main loop and closes the window.
 * **title(title)** Sets the title of the window.
+* **time()** Returns the time since start in seconds.
 
-## Compression
+### Compression
 
 The very fast compression/decompression algorithm LZ4 is provided by PiXL. You can use to it to compress data on the fly e.g. for sending it over the network.
 
 * **compress(data)** Returns a LZ4 compressed version of the given string.
 * **decompress(data[, length])** Returns a decompressed version of the given LZ4 byte string. You have to pass at least the length of the original string in order to decompress it fully. If no *length* is given a 64kb buffer is allocated to decompress the given *data*.
 
-## Networking
+### Networking
 
 PiXL provides a very simple networking interface for sending/receiving UDP packets. But beware, that UDP is an unreliable protocol which may drop packets or receive them in a different order.
 
