@@ -61,9 +61,11 @@ typedef int socklen_t;
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// NES screen resolution + scaling
+// maximum and default screen resolution
 #define PX_SCREEN_MAX_WIDTH   1024
 #define PX_SCREEN_MAX_HEIGHT  1024
+#define PX_SCREEN_WIDTH       256
+#define PX_SCREEN_HEIGHT      240
 
 // Window title
 #define PX_WINDOW_TITLE       "PiXL Window"
@@ -1268,11 +1270,11 @@ static int px_lua_init(lua_State *L) {
   if (SDL_Init(SDL_INIT_EVERYTHING)) luaL_error(L, "SDL_Init() failed: %s", SDL_GetError());
 
   // create window + texture
-  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256 * 2, 240 * 2, flags);
+  window = SDL_CreateWindow(PX_WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, PX_SCREEN_WIDTH, PX_SCREEN_HEIGHT, flags);
   if (!window) luaL_error(L, "SDL_CreateWindow() failed: %s", SDL_GetError());
   renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!renderer) luaL_error(L, "SDL_CreateRenderer() failed: %s", SDL_GetError());
-  px_create_texture(L, 256, 240);
+  px_create_texture(L, PX_SCREEN_WIDTH, PX_SCREEN_HEIGHT);
   SDL_ShowCursor(0);
 
   // audio init
