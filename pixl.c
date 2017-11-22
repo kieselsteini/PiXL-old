@@ -83,7 +83,7 @@ typedef int socklen_t;
 
 // Version and Author
 #define PX_AUTHOR             "Sebastian Steinhauer <s.steinhauer@yahoo.de>"
-#define PX_VERSION            520
+#define PX_VERSION            530
 
 
 
@@ -1322,11 +1322,11 @@ static void px_shutdown() {
 static void px_register_args(lua_State *L, int argc, char **argv) {
   int i;
   lua_newtable(L);
-  for (i = 1; i < argc; ++i) {
+  for (i = 0; i < argc; ++i) {
     lua_pushstring(L, argv[i]);
     lua_rawseti(L, -2, i);
   }
-  lua_setglobal(L, "params");
+  lua_setglobal(L, "arg");
 }
 
 int main(int argc, char **argv) {
